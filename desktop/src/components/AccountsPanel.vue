@@ -256,7 +256,7 @@ async function remove(a: AccountSummary) {
         <div>
           <span class="mute">推荐方式：</span>{{ methodsText }}<template v-if="guide.loginTip">。{{ guide.loginTip }}</template>
         </div>
-        <a class="link" @click="api.openUrl(`https://github.com/${app.info?.repo ?? 'DiXuanAoYi/Short_Video-API'}/blob/main/docs/login-guide.md`)">各网站登录说明</a>
+        <a class="link" @click="api.openUrl(`https://github.com/${app.info?.repo ?? 'DiXuanAoYi/ClearClip'}/blob/main/docs/login-guide.md`)">各网站登录说明</a>
       </div>
 
       <el-alert v-if="loginBlocked" type="info" :closable="false" show-icon>

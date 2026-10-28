@@ -161,7 +161,7 @@
 ### 目录规划（新增 `desktop/`，原 PHP 保留不动）
 
 ```
-Short_Video-API/
+ClearClip/
 ├── API.php / jxindex.php / index.html   # 原网页版，保留
 └── desktop/
     ├── src/                             # Vue 3 前端

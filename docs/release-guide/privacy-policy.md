@@ -43,4 +43,4 @@
 
 ## 变更与联系
 
-本政策变更时会更新本页面。问题或建议请在项目的 GitHub 仓库提交 Issue：<https://github.com/DiXuanAoYi/Short_Video-API/issues>。
+本政策变更时会更新本页面。问题或建议请在项目的 GitHub 仓库提交 Issue：<https://github.com/DiXuanAoYi/ClearClip/issues>。

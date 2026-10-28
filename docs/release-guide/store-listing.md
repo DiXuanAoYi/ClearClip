@@ -3,7 +3,7 @@
 这份文案可直接复制到 Chrome 网上应用店、Microsoft Edge 加载项和 Firefox 附加组件的后台。操作步骤见 [2-extension-store.md](2-extension-store.md)。
 
 - 打包文件：每个 Release 里的 `ClearClip-extension-<版本>.zip`
-- 隐私政策链接：`https://github.com/DiXuanAoYi/Short_Video-API/blob/main/docs/release-guide/privacy-policy.md`
+- 隐私政策链接：`https://github.com/DiXuanAoYi/ClearClip/blob/main/docs/release-guide/privacy-policy.md`
 - 图标：`desktop/extension/icons/128.png`
 - 类别：生产力（Productivity）
 - 语言：简体中文
@@ -35,7 +35,7 @@
 · 不读取浏览记录和页面内容，自动同步默认关闭。
 · 仅用于下载你有权保存的内容。
 
-项目主页与源代码：https://github.com/DiXuanAoYi/Short_Video-API
+项目主页与源代码：https://github.com/DiXuanAoYi/ClearClip
 
 ## 单一用途说明（Chrome “隐私权”页签）
 
@@ -61,7 +61,7 @@
 
 ## Edge “Notes for certification”（给审核人员）
 
-扩展需要配合清影桌面版（Windows / macOS / Linux）使用，下载地址：https://github.com/DiXuanAoYi/Short_Video-API/releases 。
+扩展需要配合清影桌面版（Windows / macOS / Linux）使用，下载地址：https://github.com/DiXuanAoYi/ClearClip/releases 。
 测试步骤：安装并运行清影 → 设置 → 手机与浏览器扩展 → 开启服务，把页面里显示的端口和访问令牌填入扩展设置 → 在任意网页点击扩展图标“发送当前页面”，清影会弹窗请求配对，点“允许”。扩展只连接 127.0.0.1，没有任何外部网络请求。
 
 ## Firefox 审核说明

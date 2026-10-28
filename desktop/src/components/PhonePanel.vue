@@ -9,8 +9,8 @@ import { formatDateTime } from '../utils/format'
 const info = ref<PhoneInfo | null>(null)
 const busy = ref(false)
 const showToken = ref(false)
-const DOC_URL = 'https://github.com/DiXuanAoYi/Short_Video-API/blob/main/docs/phone-send.md'
-const EXT_URL = 'https://github.com/DiXuanAoYi/Short_Video-API/tree/main/desktop/extension'
+const DOC_URL = 'https://github.com/DiXuanAoYi/ClearClip/blob/main/docs/phone-send.md'
+const EXT_URL = 'https://github.com/DiXuanAoYi/ClearClip/tree/main/desktop/extension'
 let unlisten: UnlistenFn | undefined
 let timer: number | undefined
 
