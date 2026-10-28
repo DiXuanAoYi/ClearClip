@@ -67,9 +67,12 @@ async function runHealth() {
   }
 }
 
-const namePreview = computed(() =>
-  previewFilename(form.value.filenameTemplate, { author: '山野厨房', title: '秋天第一锅板栗焖鸡', id: '7421234567890123456', platform: '抖音' }),
-)
+const nameSample = { author: '山野厨房', title: '秋天第一锅板栗焖鸡 #家常菜', id: '7421234567890123456', platform: '抖音', quality: '1080P' }
+const namePreview = computed(() => previewFilename(form.value.filenameTemplate, nameSample))
+/** 模板里不认识的 {变量}：会原样写进文件名，提前提醒。 */
+const NAME_VARS = ['author', 'title', 'date', 'id', 'platform', 'quality']
+const unknownVars = computed(() => [...new Set([...form.value.filenameTemplate.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1]).filter((v) => !NAME_VARS.includes(v)))])
+const unknownText = computed(() => unknownVars.value.map((v) => `{${v}}`).join('、'))
 
 // 任一项修改后自动保存
 let timer: number | undefined
@@ -164,9 +167,11 @@ function insertVar(v: string) {
               <label>文件命名</label>
               <el-input v-model="form.filenameTemplate" size="small" class="mono" />
               <div class="vars">
-                <button v-for="v in ['{author}', '{title}', '{date}', '{id}', '{platform}']" :key="v" type="button" class="var mono" @click="insertVar(v)">{{ v }}</button>
+                <button v-for="v in ['{author}', '{title}', '{date}', '{id}', '{platform}', '{quality}']" :key="v" type="button" class="var mono" @click="insertVar(v)">{{ v }}</button>
               </div>
               <small class="mute ellipsis">示例：{{ namePreview }}</small>
+              <small v-if="unknownVars.length" class="warn">不认识的变量 {{ unknownText }}，会原样写进文件名。</small>
+              <small class="mute block">手动下载、识别后自动下载、手机发送、订阅都按这个命名，下载队列和完成通知里显示的也是这个名字。</small>
             </div>
             <div class="kv"><span>跳过已下载过的内容</span><el-switch v-model="form.skipExisting" /></div>
             <div class="kv">
@@ -294,7 +299,7 @@ function insertVar(v: string) {
             <h3>剪贴板</h3>
             <div class="kv"><span>监听剪贴板</span><el-switch v-model="form.watchClipboard" /></div>
             <div class="kv">
-              <span>识别后自动下载<small class="mute block">按默认选项直接加入队列，不弹出确认</small></span>
+              <span>识别后自动下载<small class="mute block">按默认选项直接加入队列，不弹出确认；保存位置和文件命名同“下载 → 保存”</small></span>
               <el-switch v-model="form.autoDownload" :disabled="!form.watchClipboard" />
             </div>
             <div class="field">
@@ -686,6 +691,9 @@ h3 {
 }
 .err {
   color: var(--cc-err);
+}
+.warn {
+  color: var(--cc-warn, #e6a23c);
 }
 .inline {
   display: flex;

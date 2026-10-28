@@ -449,6 +449,12 @@ fn post_for(post: &PostOptions, asset: &Asset, settings: &Settings) -> PostOptio
     p
 }
 
+/// 这些任务在队列里显示的文件名（按“文件命名”模板生成，已处理重名）。找不到的任务跳过。
+pub fn file_names(app: &AppHandle, task_ids: &[i64]) -> Vec<String> {
+    let snaps = state(app).downloads.snapshots();
+    task_ids.iter().filter_map(|id| snaps.iter().find(|t| t.id == *id)).map(|t| naming::display_name(&t.file_path)).collect()
+}
+
 pub fn enqueue_ext(app: &AppHandle, media: MediaInfo, asset_ids: &[String], post: PostOptions, extra: EnqueueExtra) -> AppResult<EnqueueResult> {
     let st = state(app);
     let settings = st.settings();
@@ -474,14 +480,9 @@ pub fn enqueue_ext(app: &AppHandle, media: MediaInfo, asset_ids: &[String], post
     let asset_ids = &asset_ids[..];
     let root = extra.dir.clone().unwrap_or_else(|| settings.download_root());
     let mut dir = if extra.dir.is_some() { root } else { naming::target_dir(&root, &media, settings.subfolder_by_platform) };
-    let base = match (&extra.template, naming::render_series(&settings.series_template, &media)) {
-        (Some(t), _) if !t.trim().is_empty() => naming::render_base(t, &media),
-        (_, Some((dirs, base))) => {
-            dir.extend(dirs);
-            base
-        }
-        _ => naming::render_base(&settings.filename_template, &media),
-    };
+    // 文件名主体按任务单独生成（模板里的 {quality} 随各个资源的清晰度变化）；剧集命名可能带子文件夹
+    let (series_dirs, _) = naming::plan_base(extra.template.as_deref(), &settings.series_template, &settings.filename_template, &media, "");
+    dir.extend(series_dirs);
     let media_json = serde_json::to_string(&*media)?;
 
     let mut result = EnqueueResult { tasks: vec![], already_downloaded: 0, already_queued: 0 };
@@ -517,6 +518,13 @@ pub fn enqueue_ext(app: &AppHandle, media: MediaInfo, asset_ids: &[String], post
             if let Some(fmt) = &spec.post.extract_audio {
                 out_asset.ext = fmt.clone();
             }
+            let (_, base) = naming::plan_base(
+                extra.template.as_deref(),
+                &settings.series_template,
+                &settings.filename_template,
+                &media,
+                primary.quality.as_deref().unwrap_or(""),
+            );
             let wanted = naming::fit_path(&dir, &base, &out_asset, MAX_PATH_LEN);
             let path = match settings.conflict_policy {
                 ConflictPolicy::Skip if wanted.exists() => {
@@ -1317,7 +1325,7 @@ fn finish(app: &AppHandle, st: &AppState, id: i64, outcome: Result<u64, DlError>
                                 platform_name: &e.media.platform_name,
                             });
                         }
-                        notify = Some((e.snap.title.clone(), e.snap.asset_label.clone()));
+                        notify = Some((naming::display_name(&e.snap.file_path), e.snap.asset_label.clone()));
                         if !private && matches!(e.snap.asset_kind, AssetKind::Video | AssetKind::Audio) {
                             crate::organize::write_sidecars(settings, &e.media, e.spec.primary(), &dest);
                         }
@@ -1358,7 +1366,7 @@ fn finish(app: &AppHandle, st: &AppState, id: i64, outcome: Result<u64, DlError>
                 e.snap.status = TaskStatus::Failed;
                 e.snap.error_kind = Some(err.kind());
                 e.snap.error = Some(err.to_string());
-                failed_note = Some((e.snap.title.clone(), err.to_string()));
+                failed_note = Some((naming::display_name(&e.snap.file_path), err.to_string()));
             }
         }
         persist(st, e);

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, errorText } from '../api'
 import type { TaskDetail } from '../types'
-import { formatBytes, formatDateTime } from '../utils/format'
+import { fileNameOf, formatBytes, formatDateTime } from '../utils/format'
 import ErrorAlert from './ErrorAlert.vue'
 
 /** 任务 ID；为 null 时关闭 */
@@ -53,7 +53,8 @@ const report = computed(() => {
   if (!d) return ''
   const t = d.task
   const lines = [
-    `任务：${t.title}（${t.assetLabel}）`,
+    `任务：${fileNameOf(t.filePath) || t.title}（${t.assetLabel}）`,
+    `作品：${t.title}`,
     `状态：${STATUS[t.status]}${t.error ? `，${t.error}` : ''}`,
     `来源：${d.sourceUrl || '-'}`,
     ...d.requests.flatMap((r, i) => [`请求 ${i + 1}：${r.label} · ${r.protocol} · ${r.route}`, `  ${r.url}`, ...r.headers.map(([k, v]) => `  ${k}: ${v}`)]),
@@ -74,7 +75,7 @@ async function copy() {
 </script>
 
 <template>
-  <el-drawer v-model="open" :title="detail?.task.title ?? '任务详情'" size="560px" append-to-body>
+  <el-drawer v-model="open" :title="detail ? fileNameOf(detail.task.filePath) || detail.task.title : '任务详情'" size="560px" append-to-body>
     <div v-if="error" class="mute">{{ error }}</div>
     <div v-else-if="detail" class="body">
       <ErrorAlert v-if="detail.task.status === 'failed' && detail.task.error" :message="detail.task.error" :kind="detail.task.errorKind" :site="detail.task.site" />
@@ -82,6 +83,7 @@ async function copy() {
       <section>
         <h4>基本信息</h4>
         <div class="kv"><span>状态</span><span>{{ STATUS[detail.task.status] }}<template v-if="detail.task.total"> · {{ formatBytes(detail.task.received) }} / {{ formatBytes(detail.task.total) }}</template></span></div>
+        <div class="kv"><span>作品</span><span class="selectable wrap">{{ detail.task.title }}</span></div>
         <div class="kv"><span>资源</span><span>{{ detail.task.assetLabel }}</span></div>
         <div class="kv"><span>来源链接</span><span class="mono selectable wrap">{{ detail.sourceUrl || '-' }}</span></div>
         <div class="kv"><span>保存到</span><span class="mono selectable wrap">{{ detail.task.filePath }}</span></div>
