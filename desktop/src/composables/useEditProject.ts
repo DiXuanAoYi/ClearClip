@@ -11,13 +11,17 @@ import {
   MAX_START_MS,
   MAX_TEXTS,
   MIN_MS,
+  applyToAllClips,
   audioFromSource,
   clamp,
+  clearTransitions,
   clipDuration,
   clipFromSource,
   clipIndexAt,
   clipToOverlay,
   copyRegion,
+  detachedAudio,
+  editPoints,
   emptyProject,
   layout,
   mediaPaths,
@@ -31,10 +35,16 @@ import {
   overlayLanes,
   overlayToClip,
   pickTrack,
+  playbackFps,
+  shiftAfter,
   splitClip,
   splitOverlay,
+  stepFrame,
   textAt,
   totalMs,
+  trimClipAt,
+  trimOverlayAt,
+  neighborPoint,
 } from '../utils/edit'
 
 export interface Sel {
@@ -43,7 +53,18 @@ export interface Sel {
 }
 
 const DRAFT_KEY = 'clearclip.edit.draft'
+const RECENT_KEY = 'clearclip.edit.recent'
+const RECENT_LIMIT = 8
 const HISTORY_LIMIT = 100
+
+function readRecent(): string[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string').slice(0, RECENT_LIMIT) : []
+  } catch {
+    return []
+  }
+}
 
 export interface AddReport {
   added: number
@@ -61,6 +82,24 @@ export function useEditProject() {
   const filePath = ref('')
   const dirty = ref(false)
   const busy = ref(false)
+  /** 最近打开或保存过的工程文件（新的在前，最多 8 个），记在本机浏览器存储里 */
+  const recent = ref<string[]>(readRecent())
+
+  function saveRecent() {
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(recent.value))
+    } catch {
+      /* 记不住最近的工程不影响使用 */
+    }
+  }
+  function remember(path: string) {
+    recent.value = [path, ...recent.value.filter((x) => x !== path)].slice(0, RECENT_LIMIT)
+    saveRecent()
+  }
+  function forget(path?: string) {
+    recent.value = path === undefined ? [] : recent.value.filter((x) => x !== path)
+    saveRecent()
+  }
 
   const placed = computed(() => layout(project.value.clips))
   const total = computed(() => totalMs(project.value.clips))
@@ -337,6 +376,100 @@ export function useEditProject() {
     playhead.value = clamp(playhead.value, 0, total.value)
   }
 
+  /**
+   * 波纹删除选中的片段：主轨后面的片段本来就会补上来，这里再把整个在它之后才开始的叠加素材、文字、配乐一起前移同样的时间，
+   * 让它们和原来对应的画面保持对齐。落在被删片段时间范围里的不动。选中的不是主轨片段返回 null，否则返回一起前移了几个。
+   */
+  function rippleDeleteSelected(): number | null {
+    const s = sel.value
+    if (!s || s.kind !== 'clip') return null
+    const i = project.value.clips.findIndex((c) => c.id === s.id)
+    if (i < 0) return null
+    const from = placed.value[i].endMs
+    const before = total.value
+    let moved = 0
+    mutate((p) => {
+      p.clips = p.clips.filter((c) => c.id !== s.id)
+      moved = shiftAfter(p, from, before - totalMs(p.clips))
+    })
+    sel.value = null
+    playhead.value = clamp(playhead.value, 0, total.value)
+    return moved
+  }
+
+  /** 把播放位置之前 / 之后的部分裁掉。选中了叠加素材 / 片段就裁它，否则裁播放位置下的主轨片段。成功返回 true。 */
+  function trimAtPlayhead(side: 'in' | 'out'): boolean {
+    const t = Math.round(playhead.value)
+    const ov = selectedOverlay.value
+    if (ov) {
+      const next = trimOverlayAt(ov, t, side, sources[ov.path]?.durationMs)
+      if (!next) return false
+      mutate((p) => {
+        const k = p.overlays.findIndex((x) => x.id === ov.id)
+        if (k >= 0) p.overlays.splice(k, 1, next)
+      })
+      return true
+    }
+    const pl = placed.value
+    const idx = selectedClip.value ? project.value.clips.findIndex((c) => c.id === selectedClip.value?.id) : clipIndexAt(pl, t)
+    if (idx < 0) return false
+    const next = trimClipAt(project.value.clips[idx], pl[idx], t, side)
+    if (!next) return false
+    mutate((p) => {
+      p.clips.splice(idx, 1, next)
+    })
+    sel.value = { kind: 'clip', id: next.id }
+    return true
+  }
+
+  /** 把选中的片段 / 叠加素材的声音分离到配乐轨（原来的那个静音）。成功返回 null，否则返回原因。 */
+  function detachSelectedAudio(): string | null {
+    const c = selectedClip.value
+    const ov = selectedOverlay.value
+    if (!c && !ov) return '请先选中一个视频片段或叠加素材。'
+    if (project.value.audio.length >= MAX_AUDIO) return `音频轨最多 ${MAX_AUDIO} 条。`
+    const id = nextId(project.value)
+    const idx = c ? project.value.clips.findIndex((x) => x.id === c.id) : -1
+    const a = c ? detachedAudio(c, placed.value[idx].startMs, id, sources[c.path]) : detachedAudio(ov!, ov!.startMs, id, sources[ov!.path])
+    if (typeof a === 'string') return a
+    mutate((p) => {
+      p.audio.push(a)
+      const target = c ? p.clips.find((x) => x.id === c.id) : p.overlays.find((x) => x.id === ov!.id)
+      if (target) target.mute = true
+    })
+    sel.value = { kind: 'audio', id: a.id }
+    return null
+  }
+
+  /** 把选中片段的转场 / 调色 / 画面方向应用到其他所有片段，返回变了几个。 */
+  function applyToAll(what: 'transition' | 'tone' | 'turn'): number {
+    const c = selectedClip.value
+    if (!c) return 0
+    let n = 0
+    mutate((p) => {
+      n = applyToAllClips(p, c.id, what)
+    })
+    return n
+  }
+  function removeAllTransitions(): number {
+    let n = 0
+    mutate((p) => {
+      n = clearTransitions(p)
+    })
+    return n
+  }
+
+  /** 跳到前一个 / 后一个剪辑点（主轨片段、叠加素材、文字的起止）。没有更远的了返回 null。 */
+  function cutPointFrom(dir: -1 | 1): number | null {
+    // 播放位置不会超出主轨结尾，更远的剪辑点去不了
+    const pts = editPoints(project.value, placed.value).filter((x) => x <= total.value)
+    return neighborPoint(pts, playhead.value, dir)
+  }
+  /** 往前 / 往后一帧后的播放位置 */
+  function frameFrom(dir: -1 | 1): number {
+    return stepFrame(playhead.value, playbackFps(project.value, placed.value, playhead.value, sources), dir)
+  }
+
   function duplicateSelected(): boolean {
     const s = sel.value
     if (!s) return false
@@ -459,6 +592,7 @@ export function useEditProject() {
     const p = normalizeProject(r.project)
     for (const k of Object.keys(broken)) delete broken[k]
     reset(p, path)
+    remember(path)
     await loadSources(p, r.missing)
     return r.missing
   }
@@ -467,6 +601,7 @@ export function useEditProject() {
     await api.editSave(path, JSON.parse(snapshot()))
     filePath.value = path
     dirty.value = false
+    remember(path)
   }
 
   // ---------- 草稿（退出或崩溃后能找回） ----------
@@ -525,6 +660,8 @@ export function useEditProject() {
     filePath,
     dirty,
     busy,
+    recent,
+    forgetRecent: forget,
     placed,
     total,
     extent,
@@ -553,6 +690,13 @@ export function useEditProject() {
     addText,
     splitAtPlayhead,
     removeSelected,
+    rippleDeleteSelected,
+    trimAtPlayhead,
+    detachSelectedAudio,
+    applyToAll,
+    removeAllTransitions,
+    cutPointFrom,
+    frameFrom,
     duplicateSelected,
     reorderClip,
     clipToOverlayTrack,

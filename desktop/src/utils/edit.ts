@@ -1037,3 +1037,153 @@ export function aspectInSource(outW: number, outH: number, rotate: number): numb
   const a = outH > 0 ? outW / outH : 1
   return rotate === 90 || rotate === 270 ? 1 / a : a
 }
+
+// ---------- 整理操作 ----------
+// 裁到播放位置、分离音频、波纹删除、跳到剪辑点、逐帧、把设置应用到全部片段。都是纯计算，界面和测试共用。
+
+/** 把片段在时间线 t 处裁掉一边：`in` 去掉 t 之前的，`out` 去掉 t 之后的。保留 id、转场和另一端的淡入淡出；离两端不足 MIN_MS 返回 null。 */
+export function trimClipAt(c: EditClip, pl: Placed, t: number, side: 'in' | 'out'): EditClip | null {
+  const parts = splitClip(c, pl, t, c.id)
+  if (!parts) return null
+  if (side === 'in') return { ...parts[1], transition: c.transition ? { ...c.transition } : null, fadeInMs: c.fadeInMs }
+  return { ...parts[0], fadeOutMs: c.fadeOutMs }
+}
+
+/** 同上，裁叠加素材：`in` 之后它从 t 开始（位置跟着变），`out` 之后它在 t 结束。循环的素材会算好循环到哪里了。 */
+export function trimOverlayAt(o: EditOverlay, t: number, side: 'in' | 'out', srcDurMs?: number | null): EditOverlay | null {
+  const parts = splitOverlay(o, t, o.id, srcDurMs)
+  if (!parts) return null
+  if (side === 'in') return { ...parts[1], id: o.id, fadeInMs: o.fadeInMs }
+  return { ...parts[0], fadeOutMs: o.fadeOutMs }
+}
+
+/**
+ * 把片段 / 叠加素材自带的声音单独拿出来，变成配乐轨上的一条（`startMs` 是它在时间线上开始的位置）。
+ * 不能分离时返回原因：图片和没有声音的素材；变速的（配乐没有变速，声音会对不上画面）；已经静音的；循环播放的叠加素材。
+ */
+export function detachedAudio(
+  item: { path: string; kind: 'video' | 'image'; inMs: number; outMs: number; speed: number; volume: number; mute: boolean; fadeInMs: number; fadeOutMs: number; looped?: boolean },
+  startMs: number,
+  id: number,
+  src?: EditSource,
+): EditAudio | string {
+  if (item.kind === 'image') return '图片没有声音。'
+  if (src && !src.hasAudio) return '这个素材里没有声音。'
+  if (item.mute) return '已经静音了，没有声音可以分离。'
+  if (item.looped) return '循环播放的叠加素材不能分离声音。'
+  if (Math.abs(item.speed - 1) > 1e-6) return '变速的素材不能分离声音（声音会和画面对不上），请先把速度调回 1×。'
+  const a = blankAudio()
+  a.id = id
+  a.path = item.path
+  a.startMs = Math.max(0, Math.round(startMs))
+  a.inMs = item.inMs
+  a.outMs = src?.durationMs ? Math.min(item.outMs, src.durationMs) : item.outMs
+  a.volume = item.volume
+  a.fadeInMs = item.fadeInMs
+  a.fadeOutMs = item.fadeOutMs
+  return a
+}
+
+/** 把 `from`（含）之后开始的叠加素材、文字、配乐整体往前移 `delta` 毫秒（波纹删除用）。返回移动了几个。 */
+export function shiftAfter(p: EditProject, from: number, delta: number): number {
+  if (delta <= 0) return 0
+  let n = 0
+  for (const o of p.overlays) {
+    if (o.startMs >= from) {
+      o.startMs = Math.max(0, o.startMs - delta)
+      n++
+    }
+  }
+  for (const t of p.texts) {
+    if (t.startMs >= from) {
+      const len = t.endMs - t.startMs
+      t.startMs = Math.max(0, t.startMs - delta)
+      t.endMs = t.startMs + len
+      n++
+    }
+  }
+  for (const a of p.audio) {
+    if (a.startMs >= from) {
+      a.startMs = Math.max(0, a.startMs - delta)
+      n++
+    }
+  }
+  return n
+}
+
+/** 时间线上所有“剪辑点”：0、主轨片段的起止、叠加素材和文字的起止、配乐的开头。`skip` 里的那一项不算（拖它自己时吸附用）。已去重、从小到大。 */
+export function editPoints(p: EditProject, pl: Placed[], skip?: { kind: 'text' | 'audio' | 'overlay'; id: number }): number[] {
+  const v: number[] = [0]
+  for (const q of pl) v.push(q.startMs, q.endMs)
+  for (const o of p.overlays) if (!(skip?.kind === 'overlay' && skip.id === o.id)) v.push(o.startMs, overlayEnd(o))
+  for (const t of p.texts) if (!(skip?.kind === 'text' && skip.id === t.id)) v.push(t.startMs, t.endMs)
+  for (const a of p.audio) if (!(skip?.kind === 'audio' && skip.id === a.id)) v.push(a.startMs)
+  return [...new Set(v.map(Math.round))].sort((a, b) => a - b)
+}
+
+/** t 前面 / 后面最近的剪辑点（`dir` 为 -1 / 1）；离 t 不到 1 毫秒的不算。没有返回 null。 */
+export function neighborPoint(points: number[], t: number, dir: -1 | 1): number | null {
+  if (dir > 0) return points.find((x) => x > t + 0.5) ?? null
+  for (let i = points.length - 1; i >= 0; i--) if (points[i] < t - 0.5) return points[i]
+  return null
+}
+
+/** 往前 / 往后走一帧（对齐到帧边界）。`fps` 不可用时按 30 帧。 */
+export function stepFrame(t: number, fps: number | null | undefined, dir: -1 | 1): number {
+  const rate = fps && fps > 0 && fps <= 240 ? fps : 30
+  const fm = 1000 / rate
+  const k = t / fm
+  const f = dir > 0 ? Math.floor(k + 1e-6) + 1 : Math.ceil(k - 1e-6) - 1
+  return Math.max(0, Math.round(f * fm))
+}
+
+/** 逐帧用的帧率：成片指定了就用它，否则取播放位置下那个片段的帧率。 */
+export function playbackFps(p: EditProject, pl: Placed[], t: number, sources: Record<string, EditSource | undefined>): number | null {
+  if (p.out.fps > 0) return p.out.fps
+  const i = clipIndexAt(pl, t)
+  const c = p.clips[i >= 0 ? i : 0]
+  return (c && sources[c.path]?.fps) || null
+}
+
+/**
+ * 把一个片段的设置应用到其他所有片段：`transition` 转场（第一个片段前面没有衔接，不用）、`tone` 亮度 / 对比度 / 饱和度、`turn` 旋转和翻转。
+ * 返回有多少个片段变了。
+ */
+export function applyToAllClips(p: EditProject, fromId: number, what: 'transition' | 'tone' | 'turn'): number {
+  const src = p.clips.find((c) => c.id === fromId)
+  if (!src) return 0
+  let n = 0
+  p.clips.forEach((c, i) => {
+    if (c.id === fromId) return
+    if (what === 'transition') {
+      if (i === 0) return
+      const same = (c.transition?.kind ?? '') === (src.transition?.kind ?? '') && (c.transition?.durationMs ?? 0) === (src.transition?.durationMs ?? 0)
+      if (same) return
+      c.transition = src.transition ? { ...src.transition } : null
+    } else if (what === 'tone') {
+      if (c.brightness === src.brightness && c.contrast === src.contrast && c.saturation === src.saturation) return
+      c.brightness = src.brightness
+      c.contrast = src.contrast
+      c.saturation = src.saturation
+    } else {
+      if (c.rotate === src.rotate && c.flipH === src.flipH && c.flipV === src.flipV) return
+      c.rotate = src.rotate
+      c.flipH = src.flipH
+      c.flipV = src.flipV
+    }
+    n++
+  })
+  return n
+}
+
+/** 去掉所有片段的转场。返回有多少个片段变了。 */
+export function clearTransitions(p: EditProject): number {
+  let n = 0
+  for (const c of p.clips) {
+    if (c.transition) {
+      c.transition = null
+      n++
+    }
+  }
+  return n
+}
