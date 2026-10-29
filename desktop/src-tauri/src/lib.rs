@@ -518,6 +518,8 @@ pub fn run() {
             edit::cmds::edit_save,
             edit::cmds::edit_open,
             edit::cmds::edit_missing,
+            edit::cmds::edit_proxy,
+            edit::cmds::edit_subtitle_cues,
             edit::cmds::edit_fonts,
             track::cmds::track_detect,
             track::cmds::track_follow,

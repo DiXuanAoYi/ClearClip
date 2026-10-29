@@ -7,7 +7,7 @@ import type { EditAudio, EditClip, EditOutput, EditOverlay, EditProject, EditReg
 export const MIN_MS = 100
 export const MIN_TRANSITION_MS = 100
 export const MAX_CLIPS = 300
-export const MAX_TEXTS = 100
+export const MAX_TEXTS = 500
 export const MAX_AUDIO = 20
 /** 叠加素材最多几个、几条轨道、最晚从哪里开始（和后端 `MAX_OVERLAYS` / `MAX_OVERLAY_TRACKS` / `MAX_START_MS` 一致） */
 export const MAX_OVERLAYS = 100
@@ -121,6 +121,9 @@ export function blankOverlay(): EditOverlay {
     mute: false,
     fadeInMs: 0,
     fadeOutMs: 0,
+    animIn: 'none',
+    animOut: 'none',
+    animMs: 500,
     x: 0.5,
     y: 0.5,
     scale: 0.4,
@@ -187,6 +190,18 @@ export function textAt(id: number, startMs: number): EditText {
   t.text = '输入文字'
   t.startMs = startMs
   t.endMs = startMs + DEFAULT_TEXT_MS
+  return t
+}
+
+/** 字幕文件里的一条 → 画面底部的一条文字（字号比普通文字小一点，带描边）。 */
+export function textFromCue(id: number, cue: { startMs: number; endMs: number; text: string }, offsetMs: number): EditText {
+  const t = blankText()
+  t.id = id
+  t.text = cue.text
+  t.startMs = cue.startMs + offsetMs
+  t.endMs = cue.endMs + offsetMs
+  t.size = 5
+  t.y = 0.9
   return t
 }
 
@@ -498,7 +513,9 @@ export function splitOverlay(o: EditOverlay, t: number, newId: number, srcDurMs?
     second.outMs = Math.round(second.inMs + remain)
   }
   first.fadeOutMs = 0
+  first.animOut = 'none'
   second.fadeInMs = 0
+  second.animIn = 'none'
   return [first, second]
 }
 
@@ -609,6 +626,8 @@ export interface LiveOverlay {
   fade: number
   /** 从下到上的叠放序号（0 最下） */
   rank: number
+  /** 距它开始多久（毫秒） */
+  local: number
 }
 
 export interface LiveFrame {
@@ -657,7 +676,7 @@ export function liveFrame(p: EditProject, pl: Placed[], t: number, srcDur: (path
     let f = 1
     if (o.fadeInMs > 0) f = Math.min(f, local / o.fadeInMs)
     if (o.fadeOutMs > 0) f = Math.min(f, (dur - local) / o.fadeOutMs)
-    overlays.push({ overlay: o, srcMs: overlaySourceMs(o, local, srcDur(o.path)), fade: clamp(f, 0, 1), rank })
+    overlays.push({ overlay: o, srcMs: overlaySourceMs(o, local, srcDur(o.path)), fade: clamp(f, 0, 1), rank, local })
   })
   return { main, overlays }
 }
@@ -667,6 +686,31 @@ export function mainGain(m: LiveMain): number {
   if (m.clip.mute) return 0
   const x = m.role === 'out' ? 1 - m.p : m.role === 'in' ? m.p : 1
   return clamp(m.clip.volume * m.fade * x, 0, 1)
+}
+
+/** 入场 / 出场动画此刻“还没走完的比例”：1 = 在画面外（或缩到最小），0 = 在正常位置。入场先快后慢，出场先慢后快，和后端 `anim_left` 一致。 */
+export function overlayAnimLeft(o: EditOverlay, local: number, dur: number): { in: number; out: number } {
+  const d = Math.max(1, Math.min(o.animMs, dur / 2))
+  const pin = clamp(local / d, 0, 1)
+  const pout = clamp((local - (dur - d)) / d, 0, 1)
+  return { in: o.animIn === 'none' ? 0 : (1 - pin) ** 2, out: o.animOut === 'none' ? 0 : pout ** 2 }
+}
+
+/** 动画带来的位移（舞台像素）和缩放系数。`box` 是 `overlayBox` 的结果。 */
+export function overlayAnimPose(l: LiveOverlay, box: { cx: number; cy: number; ew: number; eh: number }, stage: { w: number; h: number }): { dx: number; dy: number; zoom: number } {
+  const o = l.overlay
+  const r = overlayAnimLeft(o, l.local, overlayDuration(o))
+  let dx = 0
+  let dy = 0
+  let zoom = 1
+  for (const [name, left] of [[o.animIn, r.in], [o.animOut, r.out]] as const) {
+    if (name === 'slide-left') dx -= left * (box.cx + box.ew / 2)
+    else if (name === 'slide-right') dx += left * (stage.w - box.cx + box.ew / 2)
+    else if (name === 'slide-up') dy -= left * (box.cy + box.eh / 2)
+    else if (name === 'slide-down') dy += left * (stage.h - box.cy + box.eh / 2)
+    else if (name === 'zoom') zoom -= left
+  }
+  return { dx, dy, zoom: Math.max(0.02, zoom) }
 }
 
 /** 叠加素材此刻的音量系数。 */
@@ -1053,8 +1097,8 @@ export function trimClipAt(c: EditClip, pl: Placed, t: number, side: 'in' | 'out
 export function trimOverlayAt(o: EditOverlay, t: number, side: 'in' | 'out', srcDurMs?: number | null): EditOverlay | null {
   const parts = splitOverlay(o, t, o.id, srcDurMs)
   if (!parts) return null
-  if (side === 'in') return { ...parts[1], id: o.id, fadeInMs: o.fadeInMs }
-  return { ...parts[0], fadeOutMs: o.fadeOutMs }
+  if (side === 'in') return { ...parts[1], id: o.id, fadeInMs: o.fadeInMs, animIn: o.animIn }
+  return { ...parts[0], fadeOutMs: o.fadeOutMs, animOut: o.animOut }
 }
 
 /**

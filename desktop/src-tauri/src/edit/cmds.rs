@@ -98,6 +98,41 @@ async fn thumb(ffmpeg: &Path, file: &Path, at_ms: u64, is_image: bool, dir: &Pat
     std::fs::metadata(&out).ok().filter(|m| m.len() > 0).map(|_| out)
 }
 
+/// 给实时画面用的小文件：系统播放器解不了的编码（H.265、ProRes 等）转成 H.264，高度最多 540，同一个素材只做一次。
+/// 只用来在监视器里看，导出永远用原素材。返回播放地址。
+#[tauri::command]
+pub async fn edit_proxy(state: St<'_>, path: String) -> AppResult<String> {
+    let p = PathBuf::from(&path);
+    if media_kind(&p)? != "video" {
+        return Err(AppError::invalid("只有视频需要生成预览用的小文件。"));
+    }
+    let ff = need_ffmpeg(&state)?;
+    let dir = state.data_dir.join("previews");
+    std::fs::create_dir_all(&dir)?;
+    let stamp = std::fs::metadata(&p)
+        .ok()
+        .map(|m| format!("{}-{:?}", m.len(), m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs())))
+        .unwrap_or_default();
+    let out = dir.join(format!("edit-proxy-{}.mp4", hash(&format!("{}|{stamp}", p.to_string_lossy()))));
+    if !std::fs::metadata(&out).map(|m| m.len() > 0).unwrap_or(false) {
+        let tmp = out.with_extension("part.mp4");
+        let mut a = base_args();
+        a.extend(["-i".into(), p.to_string_lossy().into_owned()]);
+        a.extend(["-map".into(), "0:v:0".into(), "-map".into(), "0:a:0?".into()]);
+        a.extend(["-vf".into(), "scale=-2:'min(540,ih)',format=yuv420p".into()]);
+        a.extend(["-c:v".into(), "libx264".into(), "-preset".into(), "ultrafast".into(), "-crf".into(), "30".into(), "-g".into(), "15".into()]);
+        a.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "96k".into(), "-ac".into(), "2".into(), "-movflags".into(), "+faststart".into(), "-y".into()]);
+        a.push(tmp.to_string_lossy().into_owned());
+        let r = run_ffmpeg_capture(&ff, &a, std::time::Duration::from_secs(3600)).await;
+        if let Err(e) = r {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+        std::fs::rename(&tmp, &out)?;
+    }
+    Ok(state.media.register(&out))
+}
+
 /// 读取一个素材：类型、时长、尺寸、有没有声音，缩略图和播放地址。
 #[tauri::command]
 pub async fn edit_probe(state: St<'_>, path: String) -> AppResult<EditSource> {
@@ -223,6 +258,39 @@ pub fn edit_open(path: String) -> AppResult<OpenedProject> {
     let project: Project = serde_json::from_slice(&std::fs::read(&p)?).map_err(|e| AppError::invalid(format!("工程文件已损坏或不是剪辑工程：{e}")))?;
     let missing = project.media_paths().into_iter().filter(|m| !Path::new(m).is_file()).collect();
     Ok(OpenedProject { project, missing })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleCue {
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub text: String,
+}
+
+/// 字幕文件最大 5 MB
+const MAX_SUBTITLE_BYTES: u64 = 5 * 1024 * 1024;
+
+/// 读取 SRT / VTT / ASS / SSA 字幕文件，按时间返回每一条字幕。
+#[tauri::command]
+pub fn edit_subtitle_cues(path: String) -> AppResult<Vec<SubtitleCue>> {
+    use crate::subtitle;
+    let p = Path::new(&path);
+    let ext = ext_of(p);
+    if !matches!(ext.as_str(), "srt" | "vtt" | "ass" | "ssa") {
+        return Err(AppError::unsupported("只支持 SRT、VTT、ASS、SSA 字幕文件。"));
+    }
+    let meta = std::fs::metadata(p).map_err(|_| AppError::not_found("找不到字幕文件。"))?;
+    if meta.len() > MAX_SUBTITLE_BYTES {
+        return Err(AppError::invalid("这个字幕文件太大了。"));
+    }
+    let text = String::from_utf8(std::fs::read(p)?).map_err(|_| AppError::invalid("字幕文件不是 UTF-8 编码，请先用文本编辑器另存为 UTF-8。"))?;
+    let cues = match ext.as_str() {
+        "srt" => subtitle::parse_srt(&text),
+        "vtt" => subtitle::parse_vtt(&text),
+        _ => subtitle::parse_ass(&text),
+    };
+    Ok(cues.into_iter().map(|c| SubtitleCue { start_ms: c.start, end_ms: c.end, text: c.lines.join("\n") }).collect())
 }
 
 /// 检查这些文件还在不在，返回找不到的。

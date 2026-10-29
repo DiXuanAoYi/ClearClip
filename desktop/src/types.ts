@@ -1363,6 +1363,8 @@ export interface EditAudio {
 }
 
 /** 叠加轨上的素材（画中画、贴纸、GIF、水印）：盖在主轨画面上面，位置、大小和时间都自由。轨号越大越在上面 */
+export type OverlayAnim = 'none' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom'
+
 export interface EditOverlay {
   id: number
   path: string
@@ -1380,6 +1382,11 @@ export interface EditOverlay {
   mute: boolean
   fadeInMs: number
   fadeOutMs: number
+  /** 入场 / 出场动画：none、slide-left / slide-right / slide-up / slide-down（从画面外滑入 / 滑出）、zoom（由小变大 / 变小消失） */
+  animIn: OverlayAnim
+  animOut: OverlayAnim
+  /** 每段动画的时长（毫秒） */
+  animMs: number
   /** 中心点在画面里的位置（占画面宽、高的比例，0.5 = 正中） */
   x: number
   y: number

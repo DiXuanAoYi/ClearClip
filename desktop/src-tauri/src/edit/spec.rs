@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use crate::track::TrackPt;
 
 pub const MAX_CLIPS: usize = 300;
-pub const MAX_TEXTS: usize = 100;
+/// 叠加素材的入场 / 出场动画
+pub const ANIMS: [&str; 6] = ["none", "slide-left", "slide-right", "slide-up", "slide-down", "zoom"];
+pub const MAX_TEXTS: usize = 500;
 pub const MAX_AUDIO: usize = 20;
 /// 叠加轨上最多的素材数、最多的轨道数
 pub const MAX_OVERLAYS: usize = 100;
@@ -312,6 +314,11 @@ pub struct Overlay {
     /// 淡入 / 淡出：画面变透明，声音同步
     pub fade_in_ms: u64,
     pub fade_out_ms: u64,
+    /// 入场 / 出场动画：none、slide-left / slide-right / slide-up / slide-down（从画面外滑入 / 滑出）、zoom（从小变大 / 变小消失）
+    pub anim_in: String,
+    pub anim_out: String,
+    /// 每段动画的时长
+    pub anim_ms: u64,
     /// 中心点在画面里的位置（占画面宽、高的比例，0.5 = 正中）
     pub x: f64,
     pub y: f64,
@@ -345,6 +352,9 @@ impl Default for Overlay {
             mute: false,
             fade_in_ms: 0,
             fade_out_ms: 0,
+            anim_in: "none".into(),
+            anim_out: "none".into(),
+            anim_ms: 500,
             x: 0.5,
             y: 0.5,
             scale: 0.4,
@@ -623,6 +633,12 @@ impl Project {
             let d = o.duration_ms();
             o.fade_in_ms = o.fade_in_ms.min(d);
             o.fade_out_ms = o.fade_out_ms.min(d.saturating_sub(o.fade_in_ms));
+            for a in [&mut o.anim_in, &mut o.anim_out] {
+                if !ANIMS.contains(&a.as_str()) {
+                    *a = "none".into();
+                }
+            }
+            o.anim_ms = o.anim_ms.clamp(MIN_MS, 3000).min((d / 2).max(MIN_MS));
         }
         self.texts.retain(|t| !t.text.trim().is_empty());
         for t in &mut self.texts {

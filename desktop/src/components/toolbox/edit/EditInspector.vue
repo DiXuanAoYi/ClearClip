@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // 检查器：选中的片段 / 叠加素材 / 文字 / 音频的属性，以及输出设置。
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { ElMessage } from 'element-plus'
-import { errorText } from '../../../api'
+import { api, errorText, events } from '../../../api'
 import type { EditApi } from '../../../composables/useEditProject'
 import type { RegionApi } from '../../../composables/useRegions'
+import type { OverlayAnim } from '../../../types'
 import type { EditClip, EditOutput, EditOverlay } from '../../../types'
 import { MAX_OVERLAY_TRACKS, MAX_START_MS, MIN_MS, MIN_TRANSITION_MS, TRANSITIONS, clipDuration, defaultOverlayScale, isGif, msText, outputSize, overlayDuration, overlayFitScale, overlaySourceLimit } from '../../../utils/edit'
 import EditField from './EditField.vue'
@@ -111,6 +113,14 @@ function moveToOverlay() {
   if (lost === null) ElMessage.warning('叠加素材已经到上限了，放不下。')
   else if (lost > 0) ElMessage.info(`这个片段上的 ${lost} 个区域不会带到叠加轨（叠加素材没有区域功能）。`)
 }
+const ANIM_OPTIONS: { value: OverlayAnim; label: string }[] = [
+  { value: 'none', label: '无' },
+  { value: 'slide-left', label: '从左滑入 / 向左滑出' },
+  { value: 'slide-right', label: '从右滑入 / 向右滑出' },
+  { value: 'slide-up', label: '从上滑入 / 向上滑出' },
+  { value: 'slide-down', label: '从下滑入 / 向下滑出' },
+  { value: 'zoom', label: '缩放' },
+]
 const ovHint = computed(() => {
   const o = overlay.value
   if (!o) return ''
@@ -134,6 +144,53 @@ async function relink() {
     ElMessage.error(errorText(e))
   }
 }
+
+// ---------- HDR 素材转成普通画面 ----------
+
+/** 正在转换的素材：转换完成后自动把工程里用到它的地方换成转换后的文件（可以撤回）。 */
+const hdrJob = ref<{ id: number; path: string; percent: number } | null>(null)
+let unlistenJobs: UnlistenFn | undefined
+onMounted(async () => {
+  unlistenJobs = await events.onMediaJobs(async (list) => {
+    const cur = hdrJob.value
+    if (!cur) return
+    const j = list.find((x) => x.id === cur.id)
+    if (!j) return
+    if (j.status === 'done' && j.output) {
+      hdrJob.value = null
+      try {
+        await ed.relink(cur.path, j.output)
+        ElMessage.success('已换成转换后的普通画面（可以撤回）')
+      } catch (e) {
+        ElMessage.error(errorText(e))
+      }
+    } else if (j.status === 'failed') {
+      hdrJob.value = null
+      ElMessage.error(j.error ?? '转换失败。')
+    } else if (j.status === 'canceled') {
+      hdrJob.value = null
+    } else {
+      cur.percent = j.percent
+    }
+  })
+})
+onBeforeUnmount(() => unlistenJobs?.())
+
+/** 用视频规整的“通用兼容”预设只做 HDR → SDR：尺寸、帧率、声音都不动，转完放在原文件旁边。 */
+async function convertHdr() {
+  const path = clip.value?.path ?? overlay.value?.path
+  if (!path || hdrJob.value) return
+  try {
+    const preset = (await api.videoPresets()).find((p) => p.id === 'compat')
+    if (!preset) throw new Error('找不到“通用兼容”预设。')
+    const spec = { ...preset.spec, size: 'keep' as const, fps: 'keep' as const, fixSync: false, quality: 'high' as const }
+    const id = await api.mediaJobStart({ op: 'normalize', spec, preset: 'compat', inputs: [path], outputDir: null })
+    hdrJob.value = { id, path, percent: 0 }
+  } catch (e) {
+    ElMessage.error(errorText(e))
+  }
+}
+const hdrBusy = computed(() => hdrJob.value !== null && hdrJob.value.path === (clip.value?.path ?? overlay.value?.path))
 
 async function pickFont() {
   try {
@@ -224,7 +281,11 @@ async function pickDir() {
         <span>{{ ed.broken[clip.path] }}</span>
         <el-button size="small" type="primary" @click="relink">重新指定文件…</el-button>
       </div>
-      <div v-else-if="src && src.hdr" class="alert soft">这个素材是 HDR，导出时不会自动转成普通画面，颜色可能偏灰。可以先在“视频规整”里转成普通画面。</div>
+      <div v-else-if="src && src.hdr" class="alert soft">
+        <span>这个素材是 HDR，剪辑不会自动转成普通画面，导出的颜色会偏灰。</span>
+        <el-button v-if="!hdrBusy" size="small" type="primary" @click="convertHdr">转成普通画面并替换</el-button>
+        <span v-else class="mute small">正在转换 {{ Math.round(hdrJob?.percent ?? 0) }}%…</span>
+      </div>
 
       <template v-if="clip.kind === 'video'">
         <EditField label="入点">
@@ -315,6 +376,11 @@ async function pickDir() {
         <span>{{ ed.broken[overlay.path] }}</span>
         <el-button size="small" type="primary" @click="relink">重新指定文件…</el-button>
       </div>
+      <div v-else-if="src && src.hdr" class="alert soft">
+        <span>这个叠加素材是 HDR，导出的颜色会偏灰。</span>
+        <el-button v-if="!hdrBusy" size="small" type="primary" @click="convertHdr">转成普通画面并替换</el-button>
+        <span v-else class="mute small">正在转换 {{ Math.round(hdrJob?.percent ?? 0) }}%…</span>
+      </div>
       <div v-else-if="ovHint" class="alert soft">{{ ovHint }}</div>
 
       <EditField label="叠加轨" hint="轨号越大，越在上面（盖住小的）">
@@ -372,6 +438,19 @@ async function pickDir() {
       </EditField>
       <EditField label="淡出（秒）" hint="逐渐变透明，声音同步">
         <el-input-number :model-value="overlay.fadeOutMs / 1000" :min="0" :max="overlayDuration(overlay) / 1000" :step="0.1" :precision="1" size="small" controls-position="right" @update:model-value="(v: number | undefined) => po({ fadeOutMs: Math.round((v ?? 0) * 1000) }, 'ofo')" />
+      </EditField>
+      <EditField label="入场动画" hint="开始时从画面外滑进来，或由小变大">
+        <el-select :model-value="overlay.animIn" size="small" style="width: 130px" @update:model-value="(v: OverlayAnim) => po({ animIn: v }, 'oai')">
+          <el-option v-for="a in ANIM_OPTIONS" :key="a.value" :label="a.label" :value="a.value" />
+        </el-select>
+      </EditField>
+      <EditField label="出场动画" hint="结束时滑出画面，或由大变小消失">
+        <el-select :model-value="overlay.animOut" size="small" style="width: 130px" @update:model-value="(v: OverlayAnim) => po({ animOut: v }, 'oao')">
+          <el-option v-for="a in ANIM_OPTIONS" :key="a.value" :label="a.label" :value="a.value" />
+        </el-select>
+      </EditField>
+      <EditField v-if="overlay.animIn !== 'none' || overlay.animOut !== 'none'" label="动画时长（秒）" hint="入场、出场各用这么久；素材很短时自动缩短">
+        <el-input-number :model-value="overlay.animMs / 1000" :min="0.1" :max="3" :step="0.1" :precision="1" size="small" controls-position="right" @update:model-value="(v: number | undefined) => po({ animMs: Math.round((v ?? 0.5) * 1000) }, 'oam')" />
       </EditField>
       <template v-if="overlay.kind === 'video' && src && src.hasAudio">
         <EditSlider label="音量" :model-value="overlay.volume" :min="0" :max="4" :step="0.05" unit="%" :scale="100" :disabled="overlay.mute" @update:model-value="(v) => po({ volume: v }, 'ovol')" />

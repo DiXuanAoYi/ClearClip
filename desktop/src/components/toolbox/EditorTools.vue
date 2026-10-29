@@ -57,7 +57,21 @@ const mainIn = ref<InstanceType<typeof FileInput> | null>(null)
 const overlayIn = ref<InstanceType<typeof FileInput> | null>(null)
 const musicIn = ref<InstanceType<typeof FileInput> | null>(null)
 
+async function importSubtitles() {
+  try {
+    const r = await open({ multiple: false, filters: [{ name: '字幕文件', extensions: ['srt', 'vtt', 'ass', 'ssa'] }] })
+    if (!r || Array.isArray(r)) return
+    if (!hasClips.value) return void ElMessage.info('先把视频放到主轨上，再导入字幕。')
+    const { added, skipped } = await ed.importSubtitles(r)
+    if (!added && !skipped) ElMessage.warning('这个字幕文件里没有读到字幕。')
+    else ElMessage({ type: skipped ? 'warning' : 'success', message: skipped ? `已导入 ${added} 条字幕，还有 ${skipped} 条放不下（文字最多 ${MAX_TEXTS} 条）。` : `已导入 ${added} 条字幕，可以在时间线的文字轨上调整。` })
+  } catch (e) {
+    ElMessage.error(errorText(e))
+  }
+}
+
 function addMenu(cmd: string) {
+  if (cmd === 'subtitle') return void importSubtitles()
   const [target, via] = cmd.split(':')
   const picker = target === 'main' ? mainIn.value : target === 'overlay' ? overlayIn.value : musicIn.value
   if (via === 'library') picker?.openPicker()
@@ -607,6 +621,7 @@ onBeforeUnmount(() => releaseDrop?.())
               <el-dropdown-item command="overlay:library">从媒体库叠加…</el-dropdown-item>
               <el-dropdown-item divided command="music">添加配乐…</el-dropdown-item>
               <el-dropdown-item command="music:library">从媒体库添加配乐…</el-dropdown-item>
+              <el-dropdown-item divided command="subtitle">导入字幕文件（SRT / ASS）…</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
