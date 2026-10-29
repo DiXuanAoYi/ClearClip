@@ -43,6 +43,13 @@ jobs:
       - name: Translation coverage
         run: npm run i18n
 
+      # 剪辑界面的测试：工具函数单元测试 + Chromium 里用模拟后端跑界面（desktop/e2e，说明见 e2e/README.md）
+      - name: Editor UI tests
+        run: |
+          sudo apt-get install -y ffmpeg
+          npx playwright install --with-deps chromium
+          npm test
+
       - name: Rust fmt
         working-directory: desktop/src-tauri
         run: cargo fmt --check
