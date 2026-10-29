@@ -7,11 +7,11 @@ cask "clearclip" do
   sha256 arm:   "@@sha_mac_arm@@",
          intel: "@@sha_mac_intel@@"
 
-  url "https://github.com/DiXuanAoYi/ClearClip/releases/download/desktop-v#{version}/ClearClip_#{version}_#{arch}.dmg"
+  url "https://github.com/DiXuanAoYi/ClearClip-Downloader/releases/download/desktop-v#{version}/ClearClip_#{version}_#{arch}.dmg"
   name "ClearClip"
   name "清影"
   desc "视频和图片网站作品解析与下载"
-  homepage "https://github.com/DiXuanAoYi/ClearClip"
+  homepage "https://github.com/DiXuanAoYi/ClearClip-Downloader"
 
   depends_on macos: ">= :catalina"
 
