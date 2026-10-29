@@ -1,6 +1,6 @@
 //! 抖音：短链跳转拿到作品 ID，再读取分享页内嵌的 `window._ROUTER_DATA`。
 //!
-//! 旧版 PHP 使用的 `iesdouyin.com/web/api/v2/aweme/iteminfo` 已失效，这里改为读取移动端分享页。
+//! 读取移动端分享页，不依赖已失效的 `aweme/iteminfo` 接口。
 
 use std::sync::LazyLock;
 
@@ -100,7 +100,7 @@ pub fn parse_item(item: &Value, id: &str, source_url: &str) -> AppResult<MediaIn
     let mut assets = Vec::new();
 
     let (kind, width, height, duration_ms) = if let Some(images) = images {
-        // 修复旧版 PHP 的问题：循环从 0 开始，不再用封面顶替第一张图。
+        // 循环从 0 开始，不用封面顶替第一张图。
         for (i, img) in images.iter().enumerate() {
             if let Some(url) = pick_image_url(img) {
                 assets.push(Asset::image(i, url, u32_at(img, "/width"), u32_at(img, "/height")));

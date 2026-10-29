@@ -2,6 +2,7 @@
   "name": "clearclip",
   "private": true,
   "version": "0.5.1",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -35,7 +35,7 @@ const ok = (name, cond, extra = '') => {
   await page.waitForFunction(() => document.querySelectorAll('.blk.txt').length === 2, null, { timeout: 5000 }).catch(() => {})
   ok('两条字幕变成两条文字', (await texts()) === 2, String(await texts()))
   await page.keyboard.press('Control+z')
-  await page.waitForTimeout(300)
+  await page.waitForFunction(() => document.querySelectorAll('.blk.txt').length === 0, null, { timeout: 5000 }).catch(() => {})
   ok('撤回一次全部去掉', (await texts()) === 0, String(await texts()))
 
   const bad = errors.filter((e) => !/favicon|net::ERR|Failed to load resource/.test(e))

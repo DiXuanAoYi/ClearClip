@@ -10,7 +10,7 @@ use crate::model::AppResult;
 pub enum ParseMode {
     /// 只用本地解析。
     Local,
-    /// 只用远程 PHP 接口（`jxindex.php`）。
+    /// 只用远程 API。
     Remote,
     /// 先本地解析，失败后改用远程接口。
     #[default]

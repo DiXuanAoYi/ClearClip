@@ -189,7 +189,7 @@ pub async fn resolve_text(ctx: &Ctx<'_>, text: &str) -> AppResult<MediaInfo> {
     resolve_url(ctx, &url).await
 }
 
-/// 旧版 PHP 接口（远程 API）只支持这些平台。
+/// 远程 API 只支持这些平台。
 pub const REMOTE_PLATFORMS: &[&str] = &["douyin", "kuaishou"];
 
 /// 远程 API 不支持的平台始终走本地解析；无法识别平台的链接交给远程接口判断。
