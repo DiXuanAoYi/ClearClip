@@ -65,7 +65,7 @@ function probe(file) {
     fps: v && den ? num / den : null,
     hasVideo: !!v,
     hasAudio: !!a,
-    hdr: false,
+    hdr: (globalThis.__hdrFiles || []).includes(file),
     thumb,
     url: urlOf(file),
   }
@@ -108,6 +108,7 @@ function initScript(mport) {
         case 'edit_preview_url': return window.__previewUrl
         case 'media_job_start': window.__exported = args.job; return 88
         case 'media_job_cancel': return null
+        case 'video_presets': return [{ id: 'compat', name: '通用兼容', desc: '', spec: { size: 'limit', width: 1920, height: 1080, shortSide: 1080, followOrientation: true, fps: 'auto', fpsValue: 30, hdr: true, fixColor: true, levels: 0, outRange: 'tv', denoise: 'off', matchColor: 0, matchTone: {}, matchShots: [], matchSkip: [], lut: null, lutStrength: 1, autocrop: false, audioRate: 0, audioChannels: 0, loudness: null, fixSync: true, codec: 'h264', quality: 'balanced' } }]
         case 'track_detect': window.__detectReqs.push(args); return await window.__trackDetect(args.path, args.atMs)
         case 'track_cancel': window.__canceled[args.id] = true; return null
         case 'track_follow': {

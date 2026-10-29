@@ -2235,4 +2235,11 @@ export const en: Record<string, string> = {
   "音频轨最多 {0} 条。": "The audio track can hold at most {0} items.",
   "当前的 ffmpeg 没有 cropdetect 滤镜，检测不了黑边，这一项不会生效。": "This ffmpeg has no cropdetect filter, so black bars can't be detected and this option has no effect.",
   "在“设置 → 组件”里安装完整版 ffmpeg 后可以使用。": "Install the full ffmpeg in Settings → Components to use it.",
+  "已换成转换后的普通画面（可以撤回）": "Replaced with the converted SDR file (you can undo this)",
+  "找不到“通用兼容”预设。": "The \"Universal compatibility\" preset was not found.",
+  "正在转换 {0}%…": "Converting {0}%…",
+  "转成普通画面并替换": "Convert to SDR and replace",
+  "转换失败。": "Conversion failed.",
+  "这个叠加素材是 HDR，导出的颜色会偏灰。": "This overlay is HDR; the exported colors will look washed out.",
+  "这个素材是 HDR，剪辑不会自动转成普通画面，导出的颜色会偏灰。": "This clip is HDR. The editor does not convert it automatically, so the exported colors will look washed out.",
 }

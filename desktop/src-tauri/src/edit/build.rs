@@ -587,7 +587,7 @@ pub fn build(p: &Project, src: &HashMap<String, Source>, caps: &Caps, tmp: &Path
             return Err(AppError::invalid(format!("第 {} 个片段的素材里没有画面。", n + 1)));
         }
         if sr.hdr && !plan.warnings.iter().any(|w| w.contains("HDR")) {
-            plan.warnings.push("有 HDR 素材：剪辑不做 HDR → SDR 转换，画面会发灰。请先用“视频规整”转成 SDR 再剪辑。".into());
+            plan.warnings.push("有 HDR 素材：导出时不做 HDR → SDR 转换，画面会发灰。在检查器里点“转成普通画面并替换”，或先用“视频规整”转成 SDR。".into());
         }
     }
     for (n, o) in p.overlays.iter().enumerate() {
