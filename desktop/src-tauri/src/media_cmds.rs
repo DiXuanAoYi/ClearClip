@@ -142,7 +142,9 @@ pub async fn video_preview(state: St<'_>, path: String, spec: crate::vidnorm::No
     let spec = spec.checked().map_err(AppError::invalid)?;
     let f = facts::read(&ff, file).await.ok_or_else(|| AppError::invalid("无法读取这个文件。"))?;
     let mut an = crate::vidnorm::Analysis::default();
-    if spec.autocrop {
+    // 精简版 ffmpeg 没有 cropdetect：跳过检测并在预览的提示里说明，而不是悄悄不去黑边
+    let crop_warning = if spec.autocrop { caps.autocrop_warning() } else { None };
+    if spec.autocrop && crop_warning.is_none() {
         an.crop = analyze::detect_crop(&ff, file, &f).await;
     }
     let mut color_warning = None;
@@ -184,7 +186,7 @@ pub async fn video_preview(state: St<'_>, path: String, spec: crate::vidnorm::No
         after: after.to_string_lossy().into_owned(),
         changed: vg.graph.is_some(),
         notes: vg.notes,
-        warnings: vg.warnings.into_iter().chain(color_warning).collect(),
+        warnings: vg.warnings.into_iter().chain(color_warning).chain(crop_warning).collect(),
     })
 }
 

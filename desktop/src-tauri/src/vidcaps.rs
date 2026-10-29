@@ -46,6 +46,13 @@ impl Caps {
         }
     }
 
+    /// 要求去黑边、但 ffmpeg 没有 `cropdetect` 时的说明。`cropdetect` 是 GPL 滤镜，精简版里没有，
+    /// 这时检测不了黑边，去黑边会被跳过（不会让任务失败）。
+    pub fn autocrop_warning(&self) -> Option<String> {
+        let hint = if self.gpl { "" } else { "在“设置 → 组件”里安装完整版 ffmpeg 后可以使用。" };
+        (!self.has_filter("cropdetect")).then(|| format!("没有 cropdetect 滤镜，检测不了黑边，已跳过去黑边。{hint}"))
+    }
+
     /// `-fps_mode` 从 5.1 开始提供，更早的版本只能用 `-vsync`。
     pub fn has_fps_mode(&self) -> bool {
         self.major == 0 || (self.major, self.minor) >= (5, 1)
@@ -107,6 +114,7 @@ impl Caps {
         if !self.has_filter("normalize") {
             notes.push("没有 normalize 滤镜，无法自动色阶。".into());
         }
+        notes.extend(self.autocrop_warning());
         CapsSummary {
             version: self.version.clone(),
             edition: if self.gpl { "full" } else { "lite" },
@@ -291,6 +299,18 @@ mod tests {
     }
 
     #[test]
+    fn autocrop_needs_cropdetect() {
+        let with = |names: &[&str], gpl| Caps { gpl, filters: names.iter().map(|n| n.to_string()).collect(), ..Default::default() };
+        assert_eq!(with(&["cropdetect"], false).autocrop_warning(), None);
+        let lite = with(&["scale"], false).autocrop_warning().unwrap();
+        assert!(lite.contains("cropdetect") && lite.contains("安装完整版"), "{lite}");
+        let full = with(&["scale"], true).autocrop_warning().unwrap();
+        assert!(!full.contains("安装完整版"), "完整版没有它时不再劝人安装完整版：{full}");
+        assert!(with(&["scale"], false).summary().notes.iter().any(|n| n.contains("cropdetect")), "界面上的限制清单里要有");
+        assert!(!with(&["cropdetect"], false).summary().notes.iter().any(|n| n.contains("cropdetect")));
+    }
+
+    #[test]
     fn versions() {
         assert_eq!(parse_version("ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023"), ("6.1.1-3ubuntu5".into(), 6, 1));
         assert_eq!(parse_version("ffmpeg version n7.1-30-gabc-20250101 Copyright"), ("n7.1-30-gabc-20250101".into(), 7, 1));
@@ -355,7 +375,13 @@ mod tests {
         let c = detect(&ff).await;
         assert!(c.has_filter("scale") && c.has_filter("fps"), "{:?}", c.filters.len());
         // 这些滤镜每个构建都有；解析不出来说明列表格式变了
-        assert!(c.has_filter("lut3d") && c.has_filter("cropdetect") && c.has_filter("loudnorm"), "{:?}", c.filters.len());
+        assert!(c.has_filter("lut3d") && c.has_filter("loudnorm"), "{:?}", c.filters.len());
+        // cropdetect 和 boxblur 是 GPL 滤镜，精简版里没有：以 `ffmpeg -filters` 的实际输出为准，不能假定它们存在
+        let listing = String::from_utf8_lossy(&std::process::Command::new("ffmpeg").args(["-hide_banner", "-filters"]).output().unwrap().stdout).into_owned();
+        for name in ["cropdetect", "boxblur"] {
+            let listed = listing.lines().any(|l| l.split_whitespace().nth(1) == Some(name));
+            assert_eq!(c.has_filter(name), listed, "{name}");
+        }
         assert!(c.filters.len() > 100, "{}", c.filters.len());
         assert!(!c.version.is_empty());
     }

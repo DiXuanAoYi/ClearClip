@@ -2233,4 +2233,6 @@ export const en: Record<string, string> = {
   "这个素材里没有声音。": "There is no sound in this item.",
   "随改随看的近似效果（转场的形状、变速、降噪等细节以导出为准）": "A live approximation (transition shapes, speed changes, denoising and similar details follow the export)",
   "音频轨最多 {0} 条。": "The audio track can hold at most {0} items.",
+  "当前的 ffmpeg 没有 cropdetect 滤镜，检测不了黑边，这一项不会生效。": "This ffmpeg has no cropdetect filter, so black bars can't be detected and this option has no effect.",
+  "在“设置 → 组件”里安装完整版 ffmpeg 后可以使用。": "Install the full ffmpeg in Settings → Components to use it.",
 }

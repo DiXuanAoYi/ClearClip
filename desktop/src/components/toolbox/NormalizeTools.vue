@@ -475,6 +475,9 @@ const imgSrc = (p: string) => convertFileSrc(p)
           <span>去黑边</span>
           <el-switch v-model="spec.autocrop" />
           <small class="mute">在视频里取几处画面检测，上下左右至少有 8 像素黑边才会裁；画面本身很暗时不会误裁。</small>
+          <small v-if="caps && !caps.cropDetect" class="warn">
+            当前的 ffmpeg 没有 cropdetect 滤镜，检测不了黑边，这一项不会生效。<template v-if="caps.edition !== 'full'">在“设置 → 组件”里安装完整版 ffmpeg 后可以使用。</template>
+          </small>
         </label>
         <label>
           <span>降噪</span>
