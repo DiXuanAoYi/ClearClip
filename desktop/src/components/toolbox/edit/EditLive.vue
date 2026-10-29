@@ -8,7 +8,7 @@ import { computed, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
 import { errorText } from '../../../api'
 import type { EditApi } from '../../../composables/useEditProject'
 import type { EditClip, EditOverlay } from '../../../types'
-import { audioSpan, clamp, isGif, liveFrame, mainGain, overlayBox, overlayEnd, overlayGain, transitionLook } from '../../../utils/edit'
+import { audioSpan, clamp, isGif, liveFrame, mainGain, overlayAnimPose, overlayBox, overlayEnd, overlayGain, transitionLook } from '../../../utils/edit'
 import type { LiveMain, LiveOverlay, TransitionLook } from '../../../utils/edit'
 
 const props = defineProps<{
@@ -133,7 +133,15 @@ function layerStyle(it: Item): Record<string, string> {
   }
   const l = ovs.value.get(it.key)
   if (!l) return {}
-  return { zIndex: String(10 + l.rank), opacity: String(clamp(l.overlay.opacity * l.fade, 0, 1)) }
+  const st: Record<string, string> = { zIndex: String(10 + l.rank), opacity: String(clamp(l.overlay.opacity * l.fade, 0, 1)) }
+  if (l.overlay.animIn !== 'none' || l.overlay.animOut !== 'none') {
+    const s = ed.sources[it.path]
+    const b = overlayBox(l.overlay, s ? { w: s.width, h: s.height } : undefined, props.stage)
+    const a = overlayAnimPose(l, b, props.stage)
+    st.transformOrigin = `${b.cx}px ${b.cy}px`
+    st.transform = `translate(${a.dx.toFixed(2)}px, ${a.dy.toFixed(2)}px) scale(${a.zoom.toFixed(4)})`
+  }
+  return st
 }
 
 const zoomStyle = (it: Item): Record<string, string> => (it.main && props.zoom && props.zoom.clip === it.id ? { transform: props.zoom.css, transformOrigin: '0 0' } : {})

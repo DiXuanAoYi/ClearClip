@@ -7,6 +7,7 @@ import { ElMessage } from 'element-plus'
 import { api, errorText, events } from '../../../api'
 import type { EditApi } from '../../../composables/useEditProject'
 import type { RegionApi } from '../../../composables/useRegions'
+import type { OverlayAnim } from '../../../types'
 import type { EditClip, EditOutput, EditOverlay } from '../../../types'
 import { MAX_OVERLAY_TRACKS, MAX_START_MS, MIN_MS, MIN_TRANSITION_MS, TRANSITIONS, clipDuration, defaultOverlayScale, isGif, msText, outputSize, overlayDuration, overlayFitScale, overlaySourceLimit } from '../../../utils/edit'
 import EditField from './EditField.vue'
@@ -112,6 +113,14 @@ function moveToOverlay() {
   if (lost === null) ElMessage.warning('叠加素材已经到上限了，放不下。')
   else if (lost > 0) ElMessage.info(`这个片段上的 ${lost} 个区域不会带到叠加轨（叠加素材没有区域功能）。`)
 }
+const ANIM_OPTIONS: { value: OverlayAnim; label: string }[] = [
+  { value: 'none', label: '无' },
+  { value: 'slide-left', label: '从左滑入 / 向左滑出' },
+  { value: 'slide-right', label: '从右滑入 / 向右滑出' },
+  { value: 'slide-up', label: '从上滑入 / 向上滑出' },
+  { value: 'slide-down', label: '从下滑入 / 向下滑出' },
+  { value: 'zoom', label: '缩放' },
+]
 const ovHint = computed(() => {
   const o = overlay.value
   if (!o) return ''
@@ -429,6 +438,19 @@ async function pickDir() {
       </EditField>
       <EditField label="淡出（秒）" hint="逐渐变透明，声音同步">
         <el-input-number :model-value="overlay.fadeOutMs / 1000" :min="0" :max="overlayDuration(overlay) / 1000" :step="0.1" :precision="1" size="small" controls-position="right" @update:model-value="(v: number | undefined) => po({ fadeOutMs: Math.round((v ?? 0) * 1000) }, 'ofo')" />
+      </EditField>
+      <EditField label="入场动画" hint="开始时从画面外滑进来，或由小变大">
+        <el-select :model-value="overlay.animIn" size="small" style="width: 130px" @update:model-value="(v: OverlayAnim) => po({ animIn: v }, 'oai')">
+          <el-option v-for="a in ANIM_OPTIONS" :key="a.value" :label="a.label" :value="a.value" />
+        </el-select>
+      </EditField>
+      <EditField label="出场动画" hint="结束时滑出画面，或由大变小消失">
+        <el-select :model-value="overlay.animOut" size="small" style="width: 130px" @update:model-value="(v: OverlayAnim) => po({ animOut: v }, 'oao')">
+          <el-option v-for="a in ANIM_OPTIONS" :key="a.value" :label="a.label" :value="a.value" />
+        </el-select>
+      </EditField>
+      <EditField v-if="overlay.animIn !== 'none' || overlay.animOut !== 'none'" label="动画时长（秒）" hint="入场、出场各用这么久；素材很短时自动缩短">
+        <el-input-number :model-value="overlay.animMs / 1000" :min="0.1" :max="3" :step="0.1" :precision="1" size="small" controls-position="right" @update:model-value="(v: number | undefined) => po({ animMs: Math.round((v ?? 0.5) * 1000) }, 'oam')" />
       </EditField>
       <template v-if="overlay.kind === 'video' && src && src.hasAudio">
         <EditSlider label="音量" :model-value="overlay.volume" :min="0" :max="4" :step="0.05" unit="%" :scale="100" :disabled="overlay.mute" @update:model-value="(v) => po({ volume: v }, 'ovol')" />

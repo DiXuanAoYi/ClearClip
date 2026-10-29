@@ -145,3 +145,16 @@ const PL = (s, d, ov = 0) => ({ startMs: s, durMs: d, overlapMs: ov, endMs: s + 
   assert.equal(E.clearTransitions(p), 0)
 }
 console.log('edit ops ok')
+
+// ---- overlayAnimLeft
+{
+  const o = ovl({ kind: 'image', outMs: 4000, animIn: 'slide-left', animOut: 'zoom', animMs: 1000 })
+  const left = (x, l) => E.overlayAnimLeft(x, l, 4000)
+  assert.deepEqual(left(o, 0), { in: 1, out: 0 })
+  assert.equal(left(o, 500).in, 0.25)
+  assert.deepEqual(left(o, 2000), { in: 0, out: 0 })
+  assert.equal(left(o, 3500).out, 0.25)
+  assert.equal(left(o, 4000).out, 1)
+  assert.equal(left({ ...o, animMs: 3000 }, 1000).in, 0.25, '时长最多取素材的一半')
+  assert.deepEqual(left({ ...o, animIn: 'none', animOut: 'none' }, 0), { in: 0, out: 0 })
+}

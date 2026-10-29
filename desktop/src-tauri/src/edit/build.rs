@@ -422,15 +422,70 @@ fn overlay_video(k: usize, idx: usize, o: &Overlay, sr: &Source, frame: (u32, &s
     if o.fade_out_ms > 0 {
         f.push(format!("fade=t=out:st={}:d={}:alpha=1", sec(d.saturating_sub(o.fade_out_ms)), sec(o.fade_out_ms)));
     }
+    if let Some(z) = zoom_expr(o) {
+        f.push(format!("scale=w='max(2,trunc(iw*({z})/2)*2)':h='max(2,trunc(ih*({z})/2)*2)':eval=frame"));
+    }
     f.push(format!("setpts=PTS+{}/TB", sec(o.start_ms)));
     stmts.push(format!("[{idx}:v:0]{}[ov{k}]", f.join(",")));
 }
 
-/// 把 `[ov{k}]` 盖到 `base` 上，返回新的画面标签。
+/// 入场 / 出场动画里“还没走完的比例”（1 = 刚开始入场 / 已经离场，0 = 在正常位置），`t0` 是动画段的开始时间（秒）。
+/// 入场先快后慢，出场先慢后快。
+fn anim_left(enter: bool, t0: f64, d: f64) -> String {
+    if enter {
+        format!("pow(1-clip((t-{t0:.3})/{d:.3},0,1),2)")
+    } else {
+        format!("pow(clip((t-{t0:.3})/{d:.3},0,1),2)")
+    }
+}
+
+/// 入场、出场动画的 (时间起点, 持续, 是入场, 动画名) 列表，只含用到的。`base` 是素材在时间线上的开始时间（毫秒）。
+fn anim_phases(o: &Overlay) -> Vec<(f64, f64, bool, &str)> {
+    let d = o.anim_ms as f64 / 1000.0;
+    let mut v = vec![];
+    if o.anim_in != "none" {
+        v.push((o.start_ms as f64 / 1000.0, d, true, o.anim_in.as_str()));
+    }
+    if o.anim_out != "none" {
+        v.push(((o.end_ms() as f64 - o.anim_ms as f64) / 1000.0, d, false, o.anim_out.as_str()));
+    }
+    v
+}
+
+/// 缩放动画的系数表达式（素材自己的时间，0 起算）；没有缩放动画返回 None。
+fn zoom_expr(o: &Overlay) -> Option<String> {
+    let dur = o.duration_ms() as f64 / 1000.0;
+    let d = o.anim_ms as f64 / 1000.0;
+    let mut terms = String::new();
+    if o.anim_in == "zoom" {
+        terms.push_str(&format!("-{}", anim_left(true, 0.0, d)));
+    }
+    if o.anim_out == "zoom" {
+        terms.push_str(&format!("-{}", anim_left(false, dur - d, d)));
+    }
+    if terms.is_empty() {
+        None
+    } else {
+        Some(format!("max(0.02,1{terms})"))
+    }
+}
+
+/// 把 `[ov{k}]` 盖到 `base` 上，返回新的画面标签。滑入 / 滑出动画写在 x、y 的表达式里。
 fn overlay_on(k: usize, base: &str, o: &Overlay, stmts: &mut Vec<String>) -> String {
     let next = format!("ob{k}");
+    let (mut dx, mut dy) = (String::new(), String::new());
+    for (t0, d, enter, name) in anim_phases(o) {
+        let r = anim_left(enter, t0, d);
+        match name {
+            "slide-left" => dx.push_str(&format!("-{r}*(W*({:.5})+w/2)", o.x)),
+            "slide-right" => dx.push_str(&format!("+{r}*(W*(1-({:.5}))+w/2)", o.x)),
+            "slide-up" => dy.push_str(&format!("-{r}*(H*({:.5})+h/2)", o.y)),
+            "slide-down" => dy.push_str(&format!("+{r}*(H*(1-({:.5}))+h/2)", o.y)),
+            _ => {}
+        }
+    }
     stmts.push(format!(
-        "[{base}][ov{k}]overlay=x='W*({:.5})-w/2':y='H*({:.5})-h/2':enable='between(t,{},{})':eof_action=pass:format=auto[{next}]",
+        "[{base}][ov{k}]overlay=x='W*({:.5})-w/2{dx}':y='H*({:.5})-h/2{dy}':enable='between(t,{},{})':eof_action=pass:format=auto[{next}]",
         o.x,
         o.y,
         sec(o.start_ms),
@@ -1395,6 +1450,21 @@ mod tests {
         let mut all = vec!["/m/a.mp4"];
         all.extend_from_slice(paths);
         build(&p, &sources(&all), &caps(), &tmp(), Mode::Export, None).unwrap()
+    }
+
+    #[test]
+    fn overlay_animations_are_expressions_on_position_and_size() {
+        let mut o = ov("/o/b.mp4", 1, 1000, 0, 3000);
+        o.x = 0.8;
+        o.anim_in = "slide-left".into();
+        o.anim_out = "zoom".into();
+        o.anim_ms = 400;
+        let g = graph_of(&built_ov(vec![o], &["/o/b.mp4"]));
+        assert!(g.contains("x='W*(0.80000)-w/2-pow(1-clip((t-1.000)/0.400,0,1),2)*(W*(0.80000)+w/2)'"), "{g}");
+        assert!(g.contains("y='H*(0.50000)-h/2'"), "{g}");
+        assert!(g.contains("scale=w='max(2,trunc(iw*(max(0.02,1-pow(clip((t-2.600)/0.400,0,1),2)))/2)*2)'"), "{g}");
+        let plain = graph_of(&built_ov(vec![ov("/o/b.mp4", 1, 1000, 0, 3000)], &["/o/b.mp4"]));
+        assert!(!plain.contains("pow(") && !plain.contains("eval=frame"), "{plain}");
     }
 
     #[test]
