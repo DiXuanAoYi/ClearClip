@@ -1,7 +1,9 @@
+> **项目已迁到新仓库：[DiXuanAoYi/ClearClip-Downloader](https://github.com/DiXuanAoYi/ClearClip-Downloader)。** 本仓库不再更新，之后会转为私有。
+
 # 清影 ClearClip
 
-[![最新版本](https://img.shields.io/github/v/release/DiXuanAoYi/ClearClip?filter=desktop-v*&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC)](https://github.com/DiXuanAoYi/ClearClip/releases/latest)
-[![desktop-ci](https://github.com/DiXuanAoYi/ClearClip/actions/workflows/desktop-ci.yml/badge.svg)](https://github.com/DiXuanAoYi/ClearClip/actions/workflows/desktop-ci.yml)
+[![最新版本](https://img.shields.io/github/v/release/DiXuanAoYi/ClearClip-Downloader?filter=desktop-v*&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC)](https://github.com/DiXuanAoYi/ClearClip-Downloader/releases/latest)
+[![desktop-ci](https://github.com/DiXuanAoYi/ClearClip-Downloader/actions/workflows/desktop-ci.yml/badge.svg)](https://github.com/DiXuanAoYi/ClearClip-Downloader/actions/workflows/desktop-ci.yml)
 
 短视频去水印解析与下载、视频规整与剪辑的桌面程序，支持 Windows / macOS / Linux。粘贴分享链接就能解析和下载；下载之后，还能在同一个程序里整理媒体库、统一视频规格、调色、做时间线剪辑。
 
@@ -9,7 +11,7 @@
 
 ## 下载安装
 
-到 [Releases](https://github.com/DiXuanAoYi/ClearClip/releases/latest) 下载，不需要编译环境。当前版本 **0.5.1**（[更新记录](desktop/CHANGELOG.md)）。
+到 [Releases](https://github.com/DiXuanAoYi/ClearClip-Downloader/releases/latest) 下载，不需要编译环境。当前版本 **0.5.2**（[更新记录](desktop/CHANGELOG.md)）。
 
 | 系统 | 下载哪个文件 |
 | --- | --- |
@@ -25,7 +27,7 @@
 - macOS：安装包没有经过 Apple 公证。被拦截时到“系统设置 → 隐私与安全性”点“仍要打开”；提示“已损坏，无法打开”时，在终端执行 `xattr -cr /Applications/ClearClip.app` 后再打开。
 - YouTube 等网站需要的 yt-dlp、ffmpeg 在“设置 → 组件”里一键安装，国内网络可以填 GitHub 镜像。程序启动后会通过 GitHub Releases 检查新版本。
 
-发布版只在 Linux 上做过完整的自动化测试，Windows / macOS 靠 CI 编译检查和实际使用反馈；遇到问题请到 [Issues](https://github.com/DiXuanAoYi/ClearClip/issues) 反馈，**并附上视频链接和版本号**。
+发布版只在 Linux 上做过完整的自动化测试，Windows / macOS 靠 CI 编译检查和实际使用反馈；遇到问题请到 [Issues](https://github.com/DiXuanAoYi/ClearClip-Downloader/issues) 反馈，**并附上视频链接和版本号**。
 
 ## 能做什么
 

@@ -26,7 +26,7 @@
 适合要反复试的情况。需要先装：[Node.js 22](https://nodejs.org/)、[Rust](https://rustup.rs/)（1.80 以上）、Visual Studio 生成工具里的“使用 C++ 的桌面开发”，Windows 11 自带 WebView2。
 
 ```powershell
-git clone https://github.com/DiXuanAoYi/ClearClip.git
+git clone https://github.com/DiXuanAoYi/ClearClip-Downloader.git
 cd ClearClip
 git checkout <要测试的分支>
 cd desktop

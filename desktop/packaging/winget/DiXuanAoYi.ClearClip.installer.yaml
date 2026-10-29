@@ -9,7 +9,7 @@ InstallModes:
 UpgradeBehavior: install
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/DiXuanAoYi/ClearClip/releases/download/desktop-v@@version@@/ClearClip_@@version@@_x64-setup.exe
+    InstallerUrl: https://github.com/DiXuanAoYi/ClearClip-Downloader/releases/download/desktop-v@@version@@/ClearClip_@@version@@_x64-setup.exe
     InstallerSha256: @@sha_win_setup@@
 ManifestType: installer
 ManifestVersion: 1.6.0

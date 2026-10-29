@@ -12,7 +12,7 @@ import pathlib
 import sys
 import urllib.request
 
-REPO = "DiXuanAoYi/ClearClip"
+REPO = "DiXuanAoYi/ClearClip-Downloader"
 HERE = pathlib.Path(__file__).parent
 
 ASSETS = {
