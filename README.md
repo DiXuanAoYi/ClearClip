@@ -9,7 +9,7 @@
 
 ## 下载安装
 
-到 [Releases](https://github.com/DiXuanAoYi/ClearClip/releases/latest) 下载，不需要编译环境。当前版本 **0.5.0**（[更新记录](desktop/CHANGELOG.md)）。
+到 [Releases](https://github.com/DiXuanAoYi/ClearClip/releases/latest) 下载，不需要编译环境。当前版本 **0.5.1**（[更新记录](desktop/CHANGELOG.md)）。
 
 | 系统 | 下载哪个文件 |
 | --- | --- |
