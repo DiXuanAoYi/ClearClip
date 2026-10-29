@@ -155,6 +155,18 @@ async function launch() {
 
 const m = (f) => path.join(MEDIA, f)
 
+/** 打开只含剪辑页的测试页面；等不到时把页面上的报错和内容打印出来，方便看 CI 日志。 */
+async function openHarness(page, errors) {
+  await page.goto('http://127.0.0.1:5199/ui-harness.html')
+  try {
+    await page.waitForSelector('.ed', { timeout: 60000 })
+  } catch (e) {
+    console.error('剪辑页没有出现。页面报错：\n' + errors.slice(0, 15).join('\n'))
+    console.error('页面内容：' + (await page.locator('body').innerText().catch(() => '')).slice(0, 500))
+    throw e
+  }
+}
+
 /** 工具栏的“添加素材”：主轨就点按钮本身，其余在箭头菜单里。 */
 async function addMenu(page, item) {
   const dd = page.locator('.bar .el-dropdown', { hasText: '添加素材' })
@@ -171,4 +183,4 @@ function pixel(buf, x, y) {
   return [out[0], out[1], out[2]]
 }
 
-module.exports = { launch, m, pixel, OUT, MEDIA, urlOf, addMenu }
+module.exports = { launch, openHarness, m, pixel, OUT, MEDIA, urlOf, addMenu }

@@ -2,7 +2,7 @@
 const fs = require('fs')
 const { execFileSync } = require('child_process')
 const path = require('path')
-const { launch, m, OUT, addMenu } = require('./lib.cjs')
+const { launch, openHarness, m, OUT, addMenu } = require('./lib.cjs')
 
 let pass = 0
 let fail = 0
@@ -69,8 +69,7 @@ function redBox(buf) {
     return { points: pts, lostMs: globalThis.__lost ? globalThis.__lost[1] - globalThis.__lost[0] : 0, note: globalThis.__lost ? '有 25% 的时间追踪不到这个区域（被挡住、出了画面，或者变化太大）。' : null }
   }
   page.on('response', (r) => r.status() >= 400 && console.log('  [http ' + r.status() + '] ' + r.url().slice(0, 140)))
-  await page.goto('http://127.0.0.1:5199/ui-harness.html')
-  await page.waitForSelector('.ed', { timeout: 30000 })
+  await openHarness(page, errors)
 
   // ---- 工具 ----
   const parseT = (s) => {

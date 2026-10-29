@@ -1,5 +1,5 @@
 // HDR 素材：检查器里提示，一键转成普通画面并替换（可撤回）。
-const { launch, m } = require('./lib.cjs')
+const { launch, openHarness, m } = require('./lib.cjs')
 
 let pass = 0
 let fail = 0
@@ -12,8 +12,7 @@ const ok = (name, cond, extra = '') => {
 ;(async () => {
   globalThis.__hdrFiles = [m('red.webm')]
   const { srv, browser, page, errors } = await launch()
-  await page.goto('http://127.0.0.1:5199/ui-harness.html')
-  await page.waitForSelector('.ed', { timeout: 30000 })
+  await openHarness(page, errors)
   const names = () => page.$$eval('.blk.clip .cap', (els) => els.map((e) => e.textContent.trim()))
   const job = (o) => page.evaluate((j) => window.__emit('media://jobs', [{ id: 88, title: 'x', op: '视频规整', output: null, error: null, note: null, finishedAt: null, ...j }]), o)
 

@@ -1,5 +1,5 @@
 const fs = require('fs')
-const { launch, m, pixel, OUT, urlOf, addMenu } = require('./lib.cjs')
+const { launch, openHarness, m, pixel, OUT, urlOf, addMenu } = require('./lib.cjs')
 
 let pass = 0
 let fail = 0
@@ -13,8 +13,7 @@ const close = (a, b, tol) => Math.abs(a - b) <= tol
 ;(async () => {
   const { srv, browser, page, errors } = await launch()
   page.on('response', (r) => r.status() >= 400 && console.log('  [http ' + r.status() + '] ' + r.url().slice(0, 140)))
-  await page.goto('http://127.0.0.1:5199/ui-harness.html')
-  await page.waitForSelector('.ed', { timeout: 30000 })
+  await openHarness(page, errors)
 
   // ---- 工具 ----
   const parseT = (s) => {

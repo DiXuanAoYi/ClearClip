@@ -1,5 +1,5 @@
 // 剪辑页面新增的整理操作：添加素材菜单、向左/右裁剪、波纹删除、分离音频、剪辑点/逐帧、复制、应用到全部、最近工程、吸附、Ctrl+滚轮缩放。
-const { launch, m, OUT, addMenu } = require('./lib.cjs')
+const { launch, openHarness, m, OUT, addMenu } = require('./lib.cjs')
 
 let pass = 0
 let fail = 0
@@ -12,8 +12,7 @@ const close = (a, b, tol) => Math.abs(a - b) <= tol
 
 ;(async () => {
   const { srv, browser, page, errors } = await launch()
-  await page.goto('http://127.0.0.1:5199/ui-harness.html')
-  await page.waitForSelector('.ed', { timeout: 30000 })
+  await openHarness(page, errors)
 
   const parseT = (s) => {
     const mm = /^(\d+):(\d{2})(?:\.(\d+))?$/.exec(s.trim())
