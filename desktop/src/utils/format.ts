@@ -45,18 +45,43 @@ export function formatDateTime(unixSecs: number | null | undefined): string {
   return `${formatDate(unixSecs)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** 与 Rust 端 naming.rs 相同规则的文件名预览。 */
-export function previewFilename(template: string, sample: { author: string; title: string; id: string; platform: string }): string {
+/** 文件路径里的文件名（正反斜杠都当作分隔符）。 */
+export function fileNameOf(path: string | null | undefined): string {
+  return (path ?? '').split(/[\\/]/).pop() ?? ''
+}
+
+const RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i
+
+/** 与 Rust 端 naming.rs `render_base` 相同规则的文件名预览（话题标签不进文件名、标题最多 60 字、整体最多 100 字、非法字符换成下划线）。 */
+export function previewFilename(
+  template: string,
+  sample: { author: string; title: string; id: string; platform: string; quality?: string },
+  ext = 'mp4',
+): string {
   const d = new Date()
   const date = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+  const words = sample.title.split(/\s+/).filter(Boolean)
+  const kept = words.filter((w) => !w.startsWith('#') && !w.startsWith('@')).join(' ')
+  const title = Array.from(kept.trim() ? kept : sample.title.trim()).slice(0, 60).join('')
   const raw = template
     .replaceAll('{author}', sample.author)
-    .replaceAll('{title}', sample.title)
+    .replaceAll('{title}', title)
     .replaceAll('{date}', date)
     .replaceAll('{id}', sample.id)
     .replaceAll('{platform}', sample.platform)
-  const clean = raw.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim()
-  return (clean || sample.id) + '.mp4'
+    .replaceAll('{quality}', sample.quality ?? '')
+  const sanitize = (x: string) =>
+    x
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .split(/\s+/)
+      .filter(Boolean)
+      .join(' ')
+  let name = Array.from(sanitize(raw)).slice(0, 100).join('').replace(/^[_. -]+|[_. -]+$/g, '')
+  if (!name) name = sanitize(sample.id) || 'clearclip'
+  if (RESERVED.test(name.split('.')[0].trim())) name += '_'
+  return `${name}.${ext}`
 }
 
 /** 相对时间：刚刚、5 分钟前、3 小时前、2 天前；超过 30 天显示日期。 */

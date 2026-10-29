@@ -18,7 +18,7 @@ use crate::providers::{self, DetectedLink};
 use crate::settings::Settings;
 use crate::{clipboard, diagnostics, live, phone, quality, subs, tools, tray, AppState};
 
-const REPO: &str = "DiXuanAoYi/Short_Video-API";
+const REPO: &str = "DiXuanAoYi/ClearClip";
 
 type St<'a> = State<'a, Arc<AppState>>;
 

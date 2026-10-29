@@ -185,7 +185,7 @@ pub fn render(cmd: &Cmd, body: &Value) -> String {
                         pad(status_name(t["status"].as_str().unwrap_or("")), 8),
                         size(rec),
                         pct,
-                        t["title"].as_str().unwrap_or("")
+                        t["fileName"].as_str().filter(|n| !n.is_empty()).or_else(|| t["title"].as_str()).unwrap_or("")
                     )
                 })
                 .collect::<Vec<_>>()
@@ -314,10 +314,10 @@ mod tests {
     fn output_is_readable() {
         let body = serde_json::json!({"tasks": [
             {"id": 5, "status": "running", "received": 5_242_880, "total": 10_485_760, "title": "视频 A"},
-            {"id": 6, "status": "failed", "received": 0, "total": null, "title": "视频 B"}]});
+            {"id": 6, "status": "failed", "received": 0, "total": null, "title": "视频 B", "fileName": "作者_视频 B_20241002.mp4"}]});
         let out = render(&Cmd::List, &body);
         assert!(out.contains("   5  下载中   5.0 MB 50%  视频 A"), "{out}");
-        assert!(out.contains("   6  失败     0 B  视频 B"), "{out}");
+        assert!(out.contains("   6  失败     0 B  作者_视频 B_20241002.mp4"), "{out}");
         assert_eq!(render(&Cmd::List, &serde_json::json!({"tasks": []})), "没有任务");
         let st = render(
             &Cmd::Status,

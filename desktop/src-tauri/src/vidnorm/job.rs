@@ -119,6 +119,9 @@ pub async fn run_normalize(ctx: &JobCtx, job: &ToolJob, spec: &NormSpec) -> AppR
     let mut plan = build(&input, &spec, &facts, &an, &caps, &tmp)?;
     plan.notes.extend(color_notes);
     plan.warnings.extend(color_warnings);
+    if spec.autocrop {
+        plan.warnings.extend(caps.autocrop_warning());
+    }
     let note = join_notes(&plan.notes, &plan.warnings);
     if plan.unchanged {
         ctx.note(format!("已经符合所选规格，没有生成新文件。{note}"));

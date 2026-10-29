@@ -112,11 +112,11 @@ pub(crate) fn on_links(app: &AppHandle, text: String, links: Vec<DetectedLink>, 
                             Some(i) if i.status == "failed" => AutoResult { url: link.url, ok: false, message: i.message.unwrap_or_default() },
                             Some(i) if i.status == "playlist" => AutoResult { url: link.url, ok: false, message: i.message.unwrap_or_default() },
                             Some(i) => {
-                                let title = i.title.unwrap_or_default();
+                                let name = added_name(&app, &i.task_ids, &i.title.unwrap_or_default());
                                 AutoResult {
                                     url: link.url,
                                     ok: true,
-                                    message: format!("已加入下载：{}", i.message.map(|m| format!("{title}（{m}）")).unwrap_or(title)),
+                                    message: format!("已加入下载：{}", i.message.map(|m| format!("{name}（{m}）")).unwrap_or(name)),
                                 }
                             }
                             None => return,
@@ -131,6 +131,20 @@ pub(crate) fn on_links(app: &AppHandle, text: String, links: Vec<DetectedLink>, 
                 let _ = app.emit(EVT_AUTO_RESULT, payload);
             });
         }
+    }
+}
+
+/// 自动加入下载后提示里显示的名字：新建了任务就用任务的文件名（按“文件命名”生成，和队列里一致），
+/// 没有新任务（之前下载过、已在队列中）时用作品标题。
+fn added_name(app: &AppHandle, task_ids: &[i64], title: &str) -> String {
+    names_text(&download::file_names(app, task_ids), title)
+}
+
+fn names_text(names: &[String], fallback: &str) -> String {
+    match names {
+        [] => fallback.to_string(),
+        [one] => one.clone(),
+        [first, rest @ ..] => format!("{first} 等 {} 个文件", rest.len() + 1),
     }
 }
 
@@ -161,6 +175,8 @@ pub async fn resolve_and_enqueue(app: &AppHandle, text: &str) -> crate::model::A
 pub struct AutoEnqueued {
     pub title: String,
     pub task_ids: Vec<i64>,
+    /// 新建任务的文件名（和下载队列里显示的一致）
+    pub file_names: Vec<String>,
     pub already_downloaded: usize,
     pub already_queued: usize,
     /// 是列表（合集、播放列表）时的条目数：不自动下载，需要用户选择
@@ -174,7 +190,7 @@ impl AutoEnqueued {
         } else if self.task_ids.is_empty() && self.already_queued > 0 {
             format!("{}（已在队列中）", self.title)
         } else {
-            self.title.clone()
+            names_text(&self.file_names, &self.title)
         }
     }
 }
@@ -191,12 +207,13 @@ pub async fn resolve_and_enqueue_full(app: &AppHandle, text: &str) -> crate::mod
     let (ids, post) = crate::quality::auto_selection(&info, &settings);
     let title = info.title.clone();
     if info.kind == crate::model::MediaKind::Playlist {
-        return Ok(AutoEnqueued { title, task_ids: vec![], already_downloaded: 0, already_queued: 0, playlist: Some(info.entries.len()) });
+        return Ok(AutoEnqueued { title, task_ids: vec![], file_names: vec![], already_downloaded: 0, already_queued: 0, playlist: Some(info.entries.len()) });
     }
     let r = download::enqueue_with(app, info, &ids, post)?;
     Ok(AutoEnqueued {
         title,
         task_ids: r.tasks.iter().map(|t| t.id).collect(),
+        file_names: r.tasks.iter().map(|t| crate::naming::display_name(&t.file_path)).collect(),
         already_downloaded: r.already_downloaded,
         already_queued: r.already_queued,
         playlist: None,

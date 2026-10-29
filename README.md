@@ -1,3 +1,7 @@
+# 清影 ClearClip
+
+短视频去水印解析与下载、视频规整与剪辑的桌面程序（Windows / macOS / Linux），仓库里同时保留最初的 PHP 解析接口。桌面版见下方“桌面版”一节，下载安装包请到 [Releases](https://github.com/DiXuanAoYi/ClearClip/releases)。
+
 短视频解析展示图
 
 ![image-20220820091507310](https://oss-lxcdn.senlucloud.cn/2022/08/20/9d124d8c04e28.png)

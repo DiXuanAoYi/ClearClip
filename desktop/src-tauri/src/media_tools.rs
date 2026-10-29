@@ -376,8 +376,14 @@ fn concat_list(paths: &[PathBuf]) -> String {
     paths.iter().map(|p| format!("file '{}'\n", p.to_string_lossy().replace('\'', "'\\''"))).collect()
 }
 
-/// 把任务翻译成 ffmpeg 参数。纯函数（只有拼接会写一个临时清单文件）。
+/// 把任务翻译成 ffmpeg 参数，模糊背景用默认的 `boxblur`（测试和不需要探测滤镜的场合用）。
 pub fn plan(job: &ToolJob, inputs: &[Input], enc: &Encoders) -> AppResult<Plan> {
+    plan_with(job, inputs, enc, "boxblur=25:5")
+}
+
+/// 把任务翻译成 ffmpeg 参数。纯函数（只有拼接会写一个临时清单文件）。
+/// `blur` 是“模糊背景”用的模糊滤镜（`Caps::background_blur`）：精简版 ffmpeg 没有 `boxblur`，要换成 `gblur`。
+pub fn plan_with(job: &ToolJob, inputs: &[Input], enc: &Encoders, blur: &str) -> AppResult<Plan> {
     let first = inputs.first().ok_or_else(|| AppError::invalid("请先选择文件。"))?;
     let dir = job.output_dir.as_deref().filter(|d| !d.trim().is_empty()).map(Path::new);
     let inp = path_arg(&first.path);
@@ -420,7 +426,7 @@ pub fn plan(job: &ToolJob, inputs: &[Input], enc: &Encoders) -> AppResult<Plan> 
                 format!("[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[v]")
             } else {
                 format!(
-                    "[0:v]split[a][b];[a]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},boxblur=25:5[bg];[b]scale=-2:{h}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
+                    "[0:v]split[a][b];[a]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},{blur}[bg];[b]scale=-2:{h}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
                 )
             };
             p.args = s(&["-i", &inp, "-filter_complex", &graph, "-map", "[v]", "-map", "0:a:0?"]);
@@ -1166,8 +1172,8 @@ async fn run_job(ctx: &JobCtx, job: &ToolJob) -> AppResult<PathBuf> {
         }
         inputs.push(Input { path, probe: pr });
     }
-    let enc = st.vcaps.get(&ffmpeg).await.encoders.clone();
-    let plan = plan(job, &inputs, &enc)?;
+    let caps = st.vcaps.get(&ffmpeg).await;
+    let plan = plan_with(job, &inputs, &caps.encoders, caps.background_blur())?;
     if let Some(n) = &plan.note {
         ctx.note(n.clone());
     }
@@ -1333,6 +1339,17 @@ mod tests {
     }
 
     #[test]
+    fn landscape_blur_follows_the_available_filter() {
+        let landscape = || job(&["/m/a.mp4"], ToolOp::Landscape { width: 1920, height: 1080, mode: "blur".into() });
+        let inputs = [fake("/m/a.mp4", true, true, 10_000)];
+        let graph = |p: &Plan| p.args[p.args.iter().position(|a| a == "-filter_complex").unwrap() + 1].clone();
+        let boxblur = graph(&plan(&landscape(), &inputs, &all_enc()).unwrap());
+        assert!(boxblur.contains("crop=1920:1080,boxblur=25:5[bg]"), "{boxblur}");
+        let gblur = graph(&plan_with(&landscape(), &inputs, &all_enc(), "gblur=sigma=30").unwrap());
+        assert!(gblur.contains("crop=1920:1080,gblur=sigma=30[bg]") && !gblur.contains("boxblur"), "精简版 ffmpeg 没有 boxblur：{gblur}");
+    }
+
+    #[test]
     fn invalid_jobs_are_rejected() {
         let audio = fake("/m/a.mp3", false, true, 5000);
         let video = fake("/m/a.mp4", true, true, 5000);
@@ -1391,7 +1408,8 @@ mod tests {
             inputs.push(Input { path: PathBuf::from(i), probe: probe(ff, Path::new(i)).await });
         }
         let enc = detect_encoders(ff).await;
-        let p = plan(j, &inputs, &enc).unwrap();
+        let caps = crate::vidcaps::detect(ff).await;
+        let p = plan_with(j, &inputs, &enc, caps.background_blur()).unwrap();
         let (cancel, wake) = (AtomicBool::new(false), Notify::new());
         let seen = Mutex::new(0.0f64);
         let on = |v: f64| *seen.lock().unwrap() = v;

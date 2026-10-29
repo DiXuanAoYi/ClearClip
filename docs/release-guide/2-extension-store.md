@@ -7,7 +7,7 @@
 
 - 商店文案和权限说明：[store-listing.md](store-listing.md)（复制粘贴即可）
 - 隐私政策：[privacy-policy.md](privacy-policy.md)，填商店要求的“隐私政策链接”时用  
-  `https://github.com/DiXuanAoYi/Short_Video-API/blob/main/docs/release-guide/privacy-policy.md`
+  `https://github.com/DiXuanAoYi/ClearClip/blob/main/docs/release-guide/privacy-policy.md`
 
 ### 要准备的截图
 

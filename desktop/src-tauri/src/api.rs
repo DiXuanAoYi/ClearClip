@@ -34,6 +34,8 @@ pub fn task_json(t: &download::TaskSnapshot) -> Value {
     let mut v = serde_json::to_value(t).unwrap_or(Value::Null);
     if let Some(o) = v.as_object_mut() {
         o.remove("filePath");
+        // 只给文件名（按“文件命名”生成），不暴露保存路径
+        o.insert("fileName".into(), Value::String(crate::naming::display_name(&t.file_path)));
     }
     v
 }

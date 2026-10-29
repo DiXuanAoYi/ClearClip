@@ -4,9 +4,10 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { EditApi } from '../../../composables/useEditProject'
 import type { EditAudio, EditClip, EditOverlay, EditText } from '../../../types'
-import { MAX_OVERLAY_TRACKS, MIN_MS, audioSpan, clamp, overlayDuration, overlayEnd, overlaySourceLimit, snap, textLanes, tickStep } from '../../../utils/edit'
+import { MAX_OVERLAY_TRACKS, MIN_MS, audioSpan, clamp, editPoints, overlayDuration, overlayEnd, overlaySourceLimit, snap, textLanes, tickStep } from '../../../utils/edit'
 
-const props = defineProps<{ ed: EditApi; pps: number }>()
+const props = withDefaults(defineProps<{ ed: EditApi; pps: number; snapOn?: boolean }>(), { snapOn: true })
+const emit = defineEmits<{ zoom: [pps: number] }>()
 const ed = props.ed
 
 const LABEL_W = 64
@@ -111,16 +112,12 @@ function bgDown(e: PointerEvent) {
   scrub(e)
 }
 
-/** 吸附用的候选时间：主轨片段边界、播放位置、叠加素材和文字的起止。 */
+/** 吸附用的候选时间：播放位置，加上主轨片段、叠加素材、文字、配乐的边界。 */
 function snapPoints(skip?: { kind: 'text' | 'audio' | 'overlay'; id: number }): number[] {
-  const v: number[] = [0, ed.playhead.value]
-  for (const p of ed.placed.value) v.push(p.startMs, p.endMs)
-  for (const o of ed.project.value.overlays) if (!(skip?.kind === 'overlay' && skip.id === o.id)) v.push(o.startMs, overlayEnd(o))
-  for (const t of ed.project.value.texts) if (!(skip?.kind === 'text' && skip.id === t.id)) v.push(t.startMs, t.endMs)
-  for (const a of ed.project.value.audio) if (!(skip?.kind === 'audio' && skip.id === a.id)) v.push(a.startMs)
-  return v
+  return [ed.playhead.value, ...editPoints(ed.project.value, ed.placed.value, skip)]
 }
-const snapMs = () => msOf(SNAP_PX)
+/** 吸附开着时把 v 吸到附近的候选值上，关着就原样返回。 */
+const snapTo = (v: number, pts: number[]) => (props.snapOn ? snap(v, pts, msOf(SNAP_PX)) : v)
 
 // ---------- 主轨片段 ----------
 
@@ -215,8 +212,8 @@ function overlayDown(e: PointerEvent, o: EditOverlay) {
     e,
     (dx, ev) => {
       let s = Math.max(0, s0 + msOf(dx))
-      const a = snap(s, pts, snapMs())
-      const b = snap(s + len, pts, snapMs()) - len
+      const a = snapTo(s, pts)
+      const b = snapTo(s + len, pts) - len
       s = a !== s ? a : b !== s ? b : s
       ed.patchOverlay(o.id, { startMs: Math.max(0, Math.round(s)), track: trackAtY(ev.clientY, o.track) }, `omove:${o.id}`)
     },
@@ -237,12 +234,12 @@ function overlayTrim(e: PointerEvent, o: EditOverlay, side: 'l' | 'r') {
   drag(e, (dx) => {
     if (side === 'r') {
       const end0 = o0.s + o0.dur
-      const d = snap(end0 + msOf(dx), pts, snapMs()) - end0
+      const d = snapTo(end0 + msOf(dx), pts) - end0
       ed.patchOverlay(o.id, { outMs: Math.round(clamp(o0.o + d * speed, o0.i + minSpan, limit)) }, `otrim:${o.id}`)
       return
     }
     // 左边缘：开头往后收（或往前放开）。能从素材里多取一点的（没循环的视频）改入点，否则缩短出点
-    const from = snap(o0.s + msOf(dx), pts, snapMs()) - o0.s
+    const from = snapTo(o0.s + msOf(dx), pts) - o0.s
     const lowest = o.kind === 'video' && !o.looped ? -Math.min(o0.s, o0.i / speed) : -o0.s
     const delta = clamp(from, lowest, o0.dur - minSpan / speed)
     if (o.kind === 'video' && !o.looped) ed.patchOverlay(o.id, { startMs: Math.round(o0.s + delta), inMs: Math.round(o0.i + delta * speed) }, `otrim:${o.id}`)
@@ -275,8 +272,8 @@ function textDown(e: PointerEvent, t: EditText) {
       const len = o.e - o.s
       let s = Math.max(0, o.s + msOf(dx))
       // 开头或结尾靠近别的边界时吸附过去
-      const a = snap(s, pts, snapMs())
-      const b = snap(s + len, pts, snapMs()) - len
+      const a = snapTo(s, pts)
+      const b = snapTo(s + len, pts) - len
       s = a !== s ? a : b !== s ? b : s
       s = Math.max(0, Math.round(s))
       ed.patchText(t.id, { startMs: s, endMs: s + len }, `tmove:${t.id}`)
@@ -291,7 +288,7 @@ function textTrim(e: PointerEvent, t: EditText, side: 'l' | 'r') {
   const pts = snapPoints({ kind: 'text', id: t.id })
   ed.sel.value = { kind: 'text', id: t.id }
   drag(e, (dx) => {
-    const v = snap(Math.max(0, (side === 'l' ? o.s : o.e) + msOf(dx)), pts, snapMs())
+    const v = snapTo(Math.max(0, (side === 'l' ? o.s : o.e) + msOf(dx)), pts)
     if (side === 'l') ed.patchText(t.id, { startMs: Math.round(clamp(v, 0, o.e - MIN_MS)) }, `ttrim:${t.id}`)
     else ed.patchText(t.id, { endMs: Math.round(Math.max(o.s + MIN_MS, v)) }, `ttrim:${t.id}`)
   })
@@ -309,7 +306,7 @@ function audioDown(e: PointerEvent, a: EditAudio) {
   drag(
     e,
     (dx) => {
-      const s = Math.round(Math.max(0, snap(s0 + msOf(dx), pts, snapMs())))
+      const s = Math.round(Math.max(0, snapTo(s0 + msOf(dx), pts)))
       ed.patchAudio(a.id, { startMs: s }, `amove:${a.id}`)
     },
     (moved) => {
@@ -349,6 +346,27 @@ watch(
     }
   },
 )
+
+// ---------- Ctrl + 滚轮缩放 ----------
+
+/** 按住 Ctrl（Mac 上是 ⌘）滚滚轮缩放时间线，鼠标指着的那个时刻保持在原地。 */
+function onWheel(e: WheelEvent) {
+  if (!e.ctrlKey && !e.metaKey) return
+  e.preventDefault()
+  const el = scroller.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const anchor = msOf(x + el.scrollLeft - LABEL_W)
+  const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18
+  let next = Math.round(clamp(props.pps * factor, 5, 400))
+  if (next === props.pps) next = clamp(props.pps + (e.deltaY < 0 ? 1 : -1), 5, 400)
+  if (next === props.pps) return
+  emit('zoom', next)
+  nextTick(() => {
+    el.scrollLeft = Math.max(0, px(anchor) + LABEL_W - x)
+  })
+}
 
 // ---------- 从资源管理器拖文件进来 ----------
 
@@ -395,7 +413,7 @@ defineExpose({ reveal, targetAt, hover })
 </script>
 
 <template>
-  <div ref="scroller" class="tl" @pointerdown.capture="blurInput">
+  <div ref="scroller" class="tl" @pointerdown.capture="blurInput" @wheel="onWheel">
     <div class="body" :style="{ width: LABEL_W + contentW + 'px' }">
       <!-- 标尺 -->
       <div class="row ruler-row">
@@ -431,7 +449,7 @@ defineExpose({ reveal, targetAt, hover })
       <div v-for="tr in overlayTracks" :key="'o' + tr" class="row ov-row" :class="{ hot: hot === 'overlay:' + tr }" :data-track="tr">
         <div class="lab" :style="{ height: trackH(tr) + 'px' }">叠加 {{ tr }}</div>
         <div class="lane" data-lane="overlay" :data-track="tr" :style="{ width: contentW + 'px', height: trackH(tr) + 'px' }" @pointerdown.prevent="bgDown">
-          <div v-if="tr === overlayTracks[0] && !anyOverlay" class="empty">点上方“添加叠加素材”，或把文件拖到这里（画中画、贴纸、GIF 动图）</div>
+          <div v-if="tr === overlayTracks[0] && !anyOverlay" class="empty">点上方“添加素材”选叠加素材，或把文件拖到这里（画中画、贴纸、GIF 动图）</div>
           <div
             v-for="x in byTrack.get(tr) ?? []"
             :key="x.o.id"
@@ -460,7 +478,7 @@ defineExpose({ reveal, targetAt, hover })
       <div class="row main-row" :class="{ hot: hot === 'main' }">
         <div class="lab">视频</div>
         <div class="lane" data-lane="main" :style="{ width: contentW + 'px' }" @pointerdown.prevent="bgDown">
-          <div v-if="!ed.project.value.clips.length" class="empty">点上方“添加片段”，把视频或图片放到这里</div>
+          <div v-if="!ed.project.value.clips.length" class="empty">点上方“添加素材”，或把视频、图片拖到这里</div>
           <div
             v-for="(c, i) in ed.project.value.clips"
             :key="c.id"
@@ -489,7 +507,7 @@ defineExpose({ reveal, targetAt, hover })
       <div v-for="r in audioRows" :key="'a' + r" class="row audio-row" :class="{ hot: hot === 'audio' }">
         <div class="lab">{{ r === 1 ? '音频' : '' }}</div>
         <div class="lane" data-lane="audio" :style="{ width: contentW + 'px' }" @pointerdown.prevent="bgDown">
-          <div v-if="r === 1 && !ed.project.value.audio.length" class="empty">点上方“添加配乐”</div>
+          <div v-if="r === 1 && !ed.project.value.audio.length" class="empty">点上方“添加素材”选配乐，或把音频拖到这里</div>
           <div
             v-if="ed.project.value.audio[r - 1]"
             class="blk aud"

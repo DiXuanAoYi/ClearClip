@@ -6,7 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, errorText } from '../api'
 import { useAppStore, useQueueStore } from '../stores/app'
 import type { OrphanPart, TaskSnapshot } from '../types'
-import { formatBytes, formatDateTime, formatEta, formatSpeed } from '../utils/format'
+import { fileNameOf, formatBytes, formatDateTime, formatEta, formatSpeed } from '../utils/format'
 import TaskDrawer from '../components/TaskDrawer.vue'
 
 const queue = useQueueStore()
@@ -160,7 +160,7 @@ async function run<A extends unknown[]>(fn: (...args: A) => Promise<unknown>, ..
       <img v-if="t.cover" :src="t.cover" class="thumb" referrerpolicy="no-referrer" alt="" />
       <div v-else class="thumb" />
       <div class="info">
-        <div class="name ellipsis" :title="t.title">{{ t.title }} <span class="mute">· {{ t.assetLabel }}</span></div>
+        <div class="name ellipsis" :title="`${fileNameOf(t.filePath) || t.title}（作品：${t.title}）`">{{ fileNameOf(t.filePath) || t.title }} <span class="mute">· {{ t.assetLabel }}</span></div>
         <div class="bar"><i :style="{ width: percent(t) + '%' }" /></div>
         <small class="mono detail ellipsis selectable" :title="detail(t)">{{ detail(t) }}</small>
         <small v-if="t.warning" class="warn-line selectable" :title="t.warning">⚠ {{ t.warning }}</small>

@@ -32,11 +32,37 @@ const pps = ref(50)
 const outDir = ref('')
 const monitorMode = ref<'live' | 'preview'>('live')
 
+const SNAP_KEY = 'clearclip.edit.snap'
+const snapOn = ref(true)
+try {
+  snapOn.value = localStorage.getItem(SNAP_KEY) !== '0'
+} catch {
+  /* 读不到就保持默认：吸附开着 */
+}
+watch(snapOn, (v) => {
+  try {
+    localStorage.setItem(SNAP_KEY, v ? '1' : '0')
+  } catch {
+    /* 记不住不影响使用 */
+  }
+})
+
 // ---------- 添加素材 ----------
 
 const pickedClips = ref<string[]>([])
 const pickedOverlays = ref<string[]>([])
 const pickedMusic = ref<string[]>([])
+/** 三个文件选择器藏在“添加素材”菜单后面，菜单项调用它们的选择文件 / 媒体库 */
+const mainIn = ref<InstanceType<typeof FileInput> | null>(null)
+const overlayIn = ref<InstanceType<typeof FileInput> | null>(null)
+const musicIn = ref<InstanceType<typeof FileInput> | null>(null)
+
+function addMenu(cmd: string) {
+  const [target, via] = cmd.split(':')
+  const picker = target === 'main' ? mainIn.value : target === 'overlay' ? overlayIn.value : musicIn.value
+  if (via === 'library') picker?.openPicker()
+  else picker?.browse()
+}
 
 function report(r: AddReport) {
   if (r.errors.length) ElMessage({ type: r.added ? 'warning' : 'error', message: r.errors.slice(0, 3).join('\n') + (r.errors.length > 3 ? `\n……还有 ${r.errors.length - 3} 个` : ''), duration: 6000, showClose: true })
@@ -106,6 +132,17 @@ function step(ms: number) {
   ed.playing.value = false
   goto(ed.playhead.value + ms)
 }
+/** 跳到上一个 / 下一个剪辑点 */
+function jump(dir: -1 | 1) {
+  ed.playing.value = false
+  const t = ed.cutPointFrom(dir)
+  if (t !== null) goto(t)
+}
+/** 前进 / 后退一帧 */
+function frame(dir: -1 | 1) {
+  ed.playing.value = false
+  goto(ed.frameFrom(dir))
+}
 
 watch(
   () => ed.total.value,
@@ -116,6 +153,9 @@ watch(
 
 // ---------- 缩放 ----------
 
+function setZoom(v: number) {
+  pps.value = clamp(Math.round(v), 5, 400)
+}
 function fit() {
   nextTick(() => {
     const w = (tlBox.value?.clientWidth ?? 800) - 64 - 48
@@ -132,6 +172,24 @@ function split() {
 function duplicate() {
   if (!ed.duplicateSelected()) ElMessage.warning('没有选中的内容，或已经到了数量上限。')
 }
+/** 向左 / 向右裁剪：把选中的（或播放位置下的）片段在播放位置裁掉前面 / 后面 */
+function trimHere(side: 'in' | 'out') {
+  if (!ed.trimAtPlayhead(side)) ElMessage.info('请先把播放位置移到片段中间（离片段两端至少 0.1 秒），再裁剪。')
+}
+function rippleDelete() {
+  const n = ed.rippleDeleteSelected()
+  if (n === null) return ed.removeSelected()
+  if (n) ElMessage.info(`后面的 ${n} 个叠加素材 / 文字 / 配乐也一起前移了。`)
+}
+function detachAudio() {
+  const why = ed.detachSelectedAudio()
+  if (why) ElMessage.info(why)
+  else ElMessage.success('声音已经分离到配乐轨，原来的画面静音了。')
+}
+const canDetach = computed(() => {
+  const s = ed.sel.value
+  return (s?.kind === 'clip' && ed.selectedClip.value?.kind === 'video') || (s?.kind === 'overlay' && ed.selectedOverlay.value?.kind === 'video')
+})
 const selectedLabel = computed(() => (ed.sel.value?.kind === 'clip' ? '片段' : ed.sel.value?.kind === 'overlay' ? '叠加素材' : ed.sel.value?.kind === 'text' ? '文字' : ed.sel.value?.kind === 'audio' ? '配乐' : ''))
 
 // ---------- 工程文件 ----------
@@ -155,6 +213,10 @@ async function newProject() {
   ed.clearDraft()
 }
 
+function reportMissing(missing: string[]) {
+  if (missing.length) ElMessage({ type: 'warning', message: `有 ${missing.length} 个素材文件找不到，已在时间线上标红。选中后可以重新指定。`, duration: 6000, showClose: true })
+}
+
 async function openProject() {
   if (!(await discardOk())) return
   try {
@@ -162,11 +224,26 @@ async function openProject() {
     if (!r || Array.isArray(r)) return
     const missing = await ed.openProject(r)
     fit()
-    if (missing.length) ElMessage({ type: 'warning', message: `有 ${missing.length} 个素材文件找不到，已在时间线上标红。选中后可以重新指定。`, duration: 6000, showClose: true })
+    reportMissing(missing)
   } catch (e) {
     ElMessage.error(errorText(e))
   }
 }
+
+/** “打开”旁边的菜单：最近的工程 */
+async function openRecent(cmd: string) {
+  if (cmd === '*clear') return ed.forgetRecent()
+  if (!(await discardOk())) return
+  try {
+    const missing = await ed.openProject(cmd)
+    fit()
+    reportMissing(missing)
+  } catch (e) {
+    ed.forgetRecent(cmd)
+    ElMessage.error(`打不开这个工程，已从最近的列表里去掉：${errorText(e)}`)
+  }
+}
+const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p
 
 async function saveAs(): Promise<boolean> {
   try {
@@ -272,6 +349,12 @@ async function buildPreview() {
 async function cancelPreview() {
   if (previewId.value !== null) await api.mediaJobCancel(previewId.value).catch(() => undefined)
 }
+/** 点“精确预览”：已经是最新的就直接切过去，否则先生成，生成好了自动切过去 */
+function setMode(v: string | number | boolean | undefined) {
+  if (v === 'preview' && (!preview.value || stale.value)) return void buildPreview()
+  monitorMode.value = v === 'preview' ? 'preview' : 'live'
+  if (monitorMode.value === 'preview') ed.playing.value = false
+}
 watch(stale, (s) => {
   if (s && monitorMode.value === 'preview') {
     ed.playing.value = false
@@ -308,6 +391,23 @@ async function exportNow() {
 
 // ---------- 键盘 ----------
 
+const SHORTCUTS: [string, string][] = [
+  ['空格', '播放 / 暂停'],
+  ['S', '在播放位置分割'],
+  ['Q / W', '向左 / 向右裁剪到播放位置'],
+  ['Delete', '删除选中的'],
+  ['Shift+Delete', '波纹删除（后面的叠加素材、文字、配乐一起前移）'],
+  ['Ctrl+D', '复制选中的'],
+  ['Ctrl+Z / Ctrl+Y', '撤销 / 重做'],
+  ['Ctrl+S', '保存工程'],
+  ['← →', '前后 1 秒（加 Shift 为 0.1 秒）'],
+  [', .', '后退 / 前进一帧'],
+  ['[ ]', '上一个 / 下一个剪辑点'],
+  ['Home / End', '回到开头 / 跳到结尾'],
+  ['Ctrl+滚轮', '缩放时间线'],
+  ['拖文件', '把文件拖到时间线的某一行，就放进那一行'],
+]
+
 function visible(): boolean {
   return !!root.value && root.value.offsetParent !== null
 }
@@ -323,7 +423,10 @@ function onKey(e: KeyboardEvent) {
   }
   const mod = e.ctrlKey || e.metaKey
   const key = e.key.toLowerCase()
-  if (mod && key === 'z') {
+  if (mod && key === 'd') {
+    e.preventDefault()
+    duplicate()
+  } else if (mod && key === 'z') {
     e.preventDefault()
     e.shiftKey ? ed.redo() : ed.undo()
   } else if (mod && key === 'y') {
@@ -339,12 +442,27 @@ function onKey(e: KeyboardEvent) {
     togglePlay()
   } else if (key === 's') {
     split()
+  } else if (key === 'q') {
+    trimHere('in')
+  } else if (key === 'w') {
+    trimHere('out')
+  } else if (e.key === '[') {
+    jump(-1)
+  } else if (e.key === ']') {
+    jump(1)
+  } else if (e.key === ',') {
+    frame(-1)
+  } else if (e.key === '.') {
+    frame(1)
   } else if (e.key === 'Escape' && rg.drawing.value) {
     rg.cancelDraw()
   } else if ((e.key === 'Delete' || e.key === 'Backspace') && rg.tabActive.value && rg.region.value) {
     // 在“区域”页选中了区域时，删除键删的是区域，不是整个片段
     e.preventDefault()
     rg.remove(rg.region.value.id)
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && e.shiftKey) {
+    e.preventDefault()
+    rippleDelete()
   } else if (e.key === 'Delete' || e.key === 'Backspace') {
     e.preventDefault()
     ed.removeSelected()
@@ -401,7 +519,7 @@ async function dropPaths(paths: string[], x: number, y: number) {
     try {
       const missing = await ed.openProject(project[0])
       fit()
-      if (missing.length) ElMessage({ type: 'warning', message: `有 ${missing.length} 个素材文件找不到，已在时间线上标红。选中后可以重新指定。`, duration: 6000, showClose: true })
+      reportMissing(missing)
     } catch (e) {
       ElMessage.error(errorText(e))
     }
@@ -462,43 +580,47 @@ onBeforeUnmount(() => releaseDrop?.())
     <div class="bar">
       <div class="grp">
         <el-button size="small" @click="newProject">新建</el-button>
-        <el-button size="small" @click="openProject">打开…</el-button>
+        <el-dropdown split-button size="small" trigger="click" @click="openProject" @command="openRecent">
+          打开…
+          <template #dropdown>
+            <el-dropdown-menu>
+              <template v-if="ed.recent.value.length">
+                <el-dropdown-item v-for="p in ed.recent.value" :key="p" :command="p" :title="p"><span data-no-i18n>{{ baseName(p) }}</span></el-dropdown-item>
+                <el-dropdown-item divided command="*clear">清空最近的记录</el-dropdown-item>
+              </template>
+              <el-dropdown-item v-else disabled>还没有最近打开的工程</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button size="small" :disabled="!hasContent" @click="saveProject">保存</el-button>
         <el-button size="small" :disabled="!hasContent" @click="saveAs">另存为…</el-button>
       </div>
       <div class="grp">
-        <FileInput
-          v-model="pickedClips"
-          multiple
-          compact
-          plain
-          :extensions="[...VIDEO_EXTS, ...IMAGE_EXTS, ...AUDIO_EXTS]"
-          :kinds="['video', 'image']"
-          browse-text="添加到主轨…"
-          library-text="从媒体库添加…"
-          label="视频或图片"
-        />
-      </div>
-      <div class="grp">
-        <FileInput
-          v-model="pickedOverlays"
-          multiple
-          compact
-          plain
-          :extensions="[...VIDEO_EXTS, ...IMAGE_EXTS]"
-          :kinds="['video', 'image']"
-          browse-text="添加叠加素材…"
-          library-text="从媒体库叠加…"
-          label="叠加的视频、图片或 GIF"
-        />
-      </div>
-      <div class="grp">
-        <FileInput v-model="pickedMusic" multiple compact plain :extensions="[...AUDIO_EXTS, ...VIDEO_EXTS]" :kinds="['audio']" browse-text="添加配乐…" library-text="从媒体库添加配乐…" label="音频" />
+        <!-- 点按钮本身是添加到主轨；箭头里是叠加素材、配乐和从媒体库添加 -->
+        <el-dropdown split-button type="primary" size="small" trigger="click" @click="addMenu('main')" @command="addMenu">
+          添加素材
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="main">添加到主轨…</el-dropdown-item>
+              <el-dropdown-item command="main:library">从媒体库添加…</el-dropdown-item>
+              <el-dropdown-item divided command="overlay">添加叠加素材…</el-dropdown-item>
+              <el-dropdown-item command="overlay:library">从媒体库叠加…</el-dropdown-item>
+              <el-dropdown-item divided command="music">添加配乐…</el-dropdown-item>
+              <el-dropdown-item command="music:library">从媒体库添加配乐…</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button size="small" @click="addText">添加文字</el-button>
       </div>
       <div class="grp end">
         <el-button size="small" :disabled="!ed.canUndo.value" @click="ed.undo">撤回</el-button>
         <el-button size="small" :disabled="!ed.canRedo.value" @click="ed.redo">重做</el-button>
+      </div>
+      <!-- 文件选择器：界面上只有“添加素材”菜单，选择文件和媒体库对话框由它们负责 -->
+      <div class="pickers">
+        <FileInput ref="mainIn" v-model="pickedClips" multiple compact plain :extensions="[...VIDEO_EXTS, ...IMAGE_EXTS, ...AUDIO_EXTS]" :kinds="['video', 'image']" label="视频或图片" />
+        <FileInput ref="overlayIn" v-model="pickedOverlays" multiple compact plain :extensions="[...VIDEO_EXTS, ...IMAGE_EXTS]" :kinds="['video', 'image']" label="叠加的视频、图片或 GIF" />
+        <FileInput ref="musicIn" v-model="pickedMusic" multiple compact plain :extensions="[...AUDIO_EXTS, ...VIDEO_EXTS]" :kinds="['audio']" label="音频" />
       </div>
     </div>
 
@@ -509,24 +631,29 @@ onBeforeUnmount(() => releaseDrop?.())
       <div class="left">
         <EditMonitor :ed="ed" :rg="rg" :mode="monitorMode" :preview-url="preview?.url ?? null" />
         <div class="transport">
-          <el-button size="small" :disabled="!hasClips" @click="goto(0)">回到开头</el-button>
+          <el-button-group size="small">
+            <el-button :disabled="!hasClips" title="上一个剪辑点（[）" @click="jump(-1)">«</el-button>
+            <el-button :disabled="!hasClips" title="后退一帧（,）" @click="frame(-1)">‹</el-button>
+          </el-button-group>
           <el-button size="small" type="primary" :disabled="!hasClips" class="play" @click="togglePlay">{{ ed.playing.value ? '暂停' : '播放' }}</el-button>
+          <el-button-group size="small">
+            <el-button :disabled="!hasClips" title="前进一帧（.）" @click="frame(1)">›</el-button>
+            <el-button :disabled="!hasClips" title="下一个剪辑点（]）" @click="jump(1)">»</el-button>
+          </el-button-group>
           <span class="mono time">{{ timeText }}</span>
           <span class="sp" />
-          <el-radio-group v-model="monitorMode" size="small">
-            <el-radio-button value="live">实时画面</el-radio-button>
-            <el-radio-button value="preview" :disabled="!preview || stale">精确预览</el-radio-button>
+          <el-radio-group :model-value="monitorMode" size="small" @update:model-value="setMode">
+            <el-radio-button value="live" title="随改随看的近似效果（转场的形状、变速、降噪等细节以导出为准）">实时画面</el-radio-button>
+            <el-radio-button value="preview" :disabled="!hasClips || building" title="和导出同一套流程渲染一遍再播放，用来逐帧核对；改过工程后需要重新生成">精确预览</el-radio-button>
           </el-radio-group>
         </div>
-        <div class="pvbar">
-          <el-button v-if="!building" size="small" :disabled="!hasClips" @click="buildPreview">生成精确预览</el-button>
-          <template v-else>
+        <div v-if="building || stale" class="pvbar">
+          <template v-if="building">
+            <span class="mute small">正在生成精确预览</span>
             <el-progress :percentage="Math.round(previewJob?.percent ?? 0)" :stroke-width="6" class="pg" />
             <el-button size="small" link @click="cancelPreview">取消</el-button>
           </template>
-          <span v-if="stale && !building" class="mute small">精确预览已过期（工程改过了），需要重新生成</span>
-          <span v-else-if="preview && !building" class="ok small">精确预览是最新的</span>
-          <span v-else-if="!building" class="mute small">实时画面随改随看，是近似效果（转场的形状、变速、降噪等细节以导出为准）；要逐帧核对再生成精确预览</span>
+          <span v-else class="mute small">精确预览已过期（工程改过了），点“精确预览”重新生成</span>
         </div>
         <div v-if="previewError" class="err selectable">{{ previewError }}</div>
       </div>
@@ -540,16 +667,31 @@ onBeforeUnmount(() => releaseDrop?.())
     <!-- 时间线 -->
     <div ref="tlBox" class="tlbox" tabindex="-1">
       <div class="tlbar">
-        <el-button size="small" :disabled="!hasClips" @click="split">分割</el-button>
-        <el-button size="small" :disabled="!ed.sel.value" @click="duplicate">复制{{ selectedLabel }}</el-button>
-        <el-button size="small" :disabled="!ed.sel.value" @click="ed.removeSelected">删除{{ selectedLabel }}</el-button>
+        <el-button size="small" :disabled="!hasClips" title="在播放位置分割（S）" @click="split">分割</el-button>
+        <el-button size="small" :disabled="!hasClips" title="去掉播放位置左边的部分（Q）" @click="trimHere('in')">向左裁剪</el-button>
+        <el-button size="small" :disabled="!hasClips" title="去掉播放位置右边的部分（W）" @click="trimHere('out')">向右裁剪</el-button>
+        <el-button size="small" :disabled="!canDetach" title="把这段素材的声音单独放到配乐轨，原来的画面静音" @click="detachAudio">分离音频</el-button>
+        <el-button size="small" :disabled="!ed.sel.value" title="（Ctrl+D）" @click="duplicate">复制{{ selectedLabel }}</el-button>
+        <el-button size="small" :disabled="!ed.sel.value" title="（Delete）" @click="ed.removeSelected">删除{{ selectedLabel }}</el-button>
+        <el-button v-if="ed.sel.value?.kind === 'clip'" size="small" title="删除片段，并把它后面才开始的叠加素材、文字、配乐一起前移（Shift+Delete）" @click="rippleDelete">波纹删除</el-button>
         <span class="sp" />
+        <el-checkbox v-model="snapOn" size="small" title="拖动叠加素材、文字、配乐时，自动靠到附近的片段边界和播放位置上">吸附</el-checkbox>
         <span class="mute small">缩放</span>
         <el-slider v-model="pps" :min="5" :max="400" :show-tooltip="false" size="small" class="zoom" />
         <el-button size="small" link @click="fit">适合窗口</el-button>
+        <el-popover placement="top-end" :width="340" trigger="click">
+          <template #reference>
+            <el-button size="small" link>快捷键</el-button>
+          </template>
+          <div class="keys">
+            <template v-for="k in SHORTCUTS" :key="k[0]">
+              <kbd>{{ k[0] }}</kbd>
+              <span>{{ k[1] }}</span>
+            </template>
+          </div>
+        </el-popover>
       </div>
-      <EditTimeline ref="timeline" :ed="ed" :pps="pps" />
-      <div class="keys mute small">空格 播放 / 暂停 · S 分割 · Delete 删除 · Ctrl+Z 撤销 · ← → 前后 1 秒（加 Shift 为 0.1 秒） · 可以把文件直接拖到时间线的某一行</div>
+      <EditTimeline ref="timeline" :ed="ed" :pps="pps" :snap-on="snapOn" @zoom="setZoom" />
     </div>
 
     <!-- 导出 -->
@@ -672,7 +814,24 @@ onBeforeUnmount(() => releaseDrop?.())
   margin: 0 8px;
 }
 .keys {
-  padding-left: 2px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 12px;
+  align-items: baseline;
+  font-size: 12.5px;
+}
+.keys kbd {
+  justify-self: start;
+  padding: 1px 6px;
+  border: 1px solid var(--cc-line);
+  border-radius: 4px;
+  background: var(--cc-card);
+  font-family: var(--cc-mono);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.pickers {
+  display: none;
 }
 .export {
   display: flex;

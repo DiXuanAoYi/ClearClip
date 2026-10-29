@@ -146,6 +146,8 @@
 | 没有 x264（H.264 软件编码） | 先找硬件编码器（NVENC、QuickSync、AMF、VideoToolbox，**真的试编码 0.3 秒通过**才算可用），再退到 openh264 | “设置 → 组件”里选**完整版（GPL，约 130 MB）**并安装：清影从 BtbN 的构建下载，是你主动点了才下载的，不随安装包分发；也能切回精简版（约 40 MB） |
 | 没有 zscale（libzimg）做高质量色调映射 | 程序**内置一张 33×33×33 的 3D LUT**（`.cube`）用 `lut3d` 滤镜做 HDR → SDR，所有 ffmpeg 构建都有这个滤镜 | 完整版有 zscale，走 zscale + tonemap（Hable）。内置 LUT 的结果与它接近，但不完全一样：中间调相差在 10/255 以内，深暗部和肤色的个别通道会有差异 |
 | 没有 vidstab（GPL） | 退回 deshake，效果较弱 | 完整版有 vidstab |
+| 没有 cropdetect（GPL） | 检测不了黑边，“去黑边”**不生效**：界面上这一项旁边、预览对比和任务说明里都会写明，不会悄悄跳过 | 完整版有 cropdetect |
+| 没有 boxblur（GPL） | “用模糊背景补边”（含工具箱的“竖转横”）改用 `gblur`，模糊程度接近 | 完整版有 boxblur |
 | 没有 HEVC 编码器 | “省空间（HEVC）”预设会提示不可用，不会静默改成别的编码 | 完整版（libx265）或有硬件 HEVC 编码器 |
 | macOS 没有官方的 BtbN 构建 | 无法一键下载完整版 | 用 Homebrew 装 ffmpeg（`brew install ffmpeg`），清影会在常见的 Homebrew 目录里找到它；设置里能看到当前用的是哪个 |
 

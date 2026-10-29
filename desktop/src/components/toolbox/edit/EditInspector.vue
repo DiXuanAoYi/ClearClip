@@ -57,6 +57,18 @@ function setTransitionMs(ms: number) {
 }
 const appliedOverlap = computed(() => placed.value?.overlapMs ?? 0)
 
+/** 把这个片段的设置应用到其他所有片段（撤回一次就能还原） */
+function applyAll(what: 'transition' | 'tone' | 'turn') {
+  const n = ed.applyToAll(what)
+  ElMessage.success(n ? `已应用到其他 ${n} 个片段。` : '其他片段已经是这样了。')
+}
+function clearAllTransitions() {
+  const n = ed.removeAllTransitions()
+  ElMessage.success(n ? `已去掉 ${n} 个转场。` : '没有转场可去掉。')
+}
+const hasTransitions = computed(() => ed.project.value.clips.some((c) => c.transition))
+const multiClip = computed(() => ed.project.value.clips.length > 1)
+
 function resetTone() {
   pc({ brightness: 0, contrast: 1, saturation: 1 }, 'tone')
 }
@@ -260,6 +272,7 @@ async function pickDir() {
       <EditField label="">
         <el-checkbox :model-value="clip.flipH" @update:model-value="(v: unknown) => pc({ flipH: !!v }, 'fh')">左右翻转</el-checkbox>
         <el-checkbox :model-value="clip.flipV" @update:model-value="(v: unknown) => pc({ flipV: !!v }, 'fv')">上下翻转</el-checkbox>
+        <el-button v-if="multiClip" size="small" link type="primary" @click="applyAll('turn')">应用到全部片段</el-button>
       </EditField>
 
       <EditSlider label="亮度" :model-value="clip.brightness" :min="-1" :max="1" :step="0.01" :scale="100" :digits="0" @update:model-value="(v) => pc({ brightness: v }, 'tone')" />
@@ -267,7 +280,7 @@ async function pickDir() {
       <EditSlider label="饱和度" :model-value="clip.saturation" :min="0" :max="3" :step="0.01" :scale="100" unit="%" @update:model-value="(v) => pc({ saturation: v }, 'tone')" />
       <EditField label="">
         <el-button size="small" link type="primary" :disabled="!toned" @click="resetTone">调色归零</el-button>
-        <span class="mute small">监视器里的颜色是近似效果，以导出为准。</span>
+        <el-button v-if="multiClip" size="small" link type="primary" @click="applyAll('tone')">应用到全部片段</el-button>
       </EditField>
 
       <EditField label="位置" hint="叠加轨上的素材可以放在画面的任意位置、任意大小，和主轨同时出现">
@@ -285,7 +298,10 @@ async function pickDir() {
         <div v-if="clip.transition && appliedOverlap < clip.transition.durationMs" class="mute small pad">
           {{ appliedOverlap ? `片段太短，实际转场 ${(appliedOverlap / 1000).toFixed(2)} 秒。` : '片段太短放不下这个转场，会直接切换。' }}
         </div>
-        <div v-if="clip.transition" class="mute small pad">实时画面里的转场是近似效果，导出时按所选转场渲染；想逐帧核对请生成“精确预览”。</div>
+        <EditField v-if="clip.transition || hasTransitions" label="">
+          <el-button v-if="clip.transition && ed.project.value.clips.length > 2" size="small" link type="primary" @click="applyAll('transition')">应用到所有衔接处</el-button>
+          <el-button v-if="hasTransitions" size="small" link @click="clearAllTransitions">去掉所有转场</el-button>
+        </EditField>
       </template>
     </div>
 

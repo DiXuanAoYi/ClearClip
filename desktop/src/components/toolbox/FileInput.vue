@@ -77,6 +77,8 @@ function confirmPicker() {
   picking.value = false
 }
 
+defineExpose({ browse, openPicker })
+
 function remove(p: string) {
   emit('update:modelValue', props.modelValue.filter((x) => x !== p))
 }
