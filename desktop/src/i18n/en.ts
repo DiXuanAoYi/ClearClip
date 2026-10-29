@@ -499,7 +499,7 @@ export const en: Record<string, string> = {
   "垂直翻转": "Flip vertically",
   "域名，例如 example.com（同时匹配子域名）": "Domain, e.g. example.com (subdomains match too)",
   "基本信息": "Basic info",
-  "填写已部署的旧版 PHP 接口（本仓库的 jxindex.php），只用于抖音、快手；其他平台始终本地解析。留空则不使用。": "Enter a deployed legacy PHP endpoint (jxindex.php in this repository); it is only used for Douyin and Kuaishou; other platforms are always parsed locally. Leave empty to not use it.",
+  "填写你自己部署的解析接口地址，只用于抖音、快手；其他平台始终本地解析。留空则不使用。": "Enter the address of a parsing endpoint you deployed yourself; it is only used for Douyin and Kuaishou; other platforms are always parsed locally. Leave empty to not use it.",
   "处理中": "Processing",
   "处理中 {0}/{1}": "Processing {0}/{1}",
   "处理进度": "Progress",

@@ -85,20 +85,9 @@ npm run tauri build    # 打包安装包
 
 提交前的检查（`desktop-ci` 在每次提交时也会跑）：`npm run build`、`npm run i18n`、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`。目录结构、数据位置、发布流程见 [desktop/README.md](desktop/README.md)。
 
-## 旧版 PHP 接口
+## 许可证
 
-仓库最初是一个 PHP 解析接口，现在仍然保留，桌面版的“远程 API 模式”可以调用它。它只支持抖音、快手（短视频和图集），小红书、微博需要定时更新 cookies，所以没有放进来。
-
-把 `API.php` 和 `jxindex.php` 放到支持 PHP 的服务器上，用 GET / POST 调用，`url` 参数必填：
-
-```
-https://你的域名/jxindex.php?url=<分享链接>
-```
-
-| 平台 | 状态 | 平台 | 状态 |
-| --- | --- | --- | --- |
-| 快手短视频 | ✔ | 抖音短视频 | ✔ |
-| 快手图集 | ✔ | 抖音图集 | ✔ |
+[MIT](LICENSE)。使用的第三方开源组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 免责声明
 

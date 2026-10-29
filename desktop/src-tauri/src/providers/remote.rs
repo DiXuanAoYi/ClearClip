@@ -1,4 +1,4 @@
-//! 远程解析：调用已经部署好的旧版 PHP 接口（`jxindex.php?url=`），作为本地解析的备用通道。
+//! 远程解析：调用用户自己部署的解析接口（`?url=` 返回 `{code, message}` JSON），作为本地解析的备用通道。
 
 use serde_json::Value;
 use url::Url;
@@ -8,15 +8,15 @@ use crate::model::{AppError, AppResult, Asset, MediaInfo, MediaKind};
 
 pub async fn resolve(ctx: &Ctx<'_>, url: &str) -> AppResult<MediaInfo> {
     let endpoint = ctx.settings.remote_endpoint.trim();
-    let mut api = Url::parse(endpoint).map_err(|_| AppError::invalid("远程 API 地址格式不正确，应类似 https://example.com/jxindex.php"))?;
+    let mut api = Url::parse(endpoint).map_err(|_| AppError::invalid("远程 API 地址格式不正确，应类似 https://example.com/api"))?;
     api.query_pairs_mut().append_pair("url", url);
     let resp = ctx.get(api).send().await?;
     let text = resp.text().await?;
-    let data: Value = serde_json::from_str(&text).map_err(|_| AppError::msg("远程 API 返回的不是 JSON，请检查地址是否指向 jxindex.php。"))?;
+    let data: Value = serde_json::from_str(&text).map_err(|_| AppError::msg("远程 API 返回的不是 JSON，请检查接口地址是否正确。"))?;
     parse_response(&data, url)
 }
 
-/// 解析旧版接口的 `{code, message}` 结构。
+/// 解析远程接口的 `{code, message}` 结构。
 pub fn parse_response(data: &Value, source_url: &str) -> AppResult<MediaInfo> {
     let code = data.get("code").and_then(Value::as_i64).unwrap_or(0);
     let message = data.get("message").cloned().unwrap_or(Value::Null);
@@ -29,7 +29,7 @@ pub fn parse_response(data: &Value, source_url: &str) -> AppResult<MediaInfo> {
     let is_photo = message.get("type").and_then(Value::as_str) == Some("photo");
     let music = message.get("music").and_then(Value::as_str).filter(|s| s.starts_with("http")).map(String::from);
 
-    // 旧接口的图集在 PHP 里是从下标 1 开始写、最后补 [0]，json_encode 后可能是对象而不是数组。
+    // 远程接口的图集可能是以数字为键的对象而不是数组。
     let urls: Vec<(usize, String)> = match message.get("video_url") {
         Some(Value::String(s)) => vec![(0, s.clone())],
         Some(Value::Array(a)) => a.iter().enumerate().filter_map(|(i, v)| v.as_str().map(|s| (i, s.to_string()))).collect(),

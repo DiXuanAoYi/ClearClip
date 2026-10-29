@@ -1,7 +1,7 @@
 //! 快手：短链跳转到移动端分享页，读取页面里的 `window.INIT_STATE`；
-//! 取不到时回退到旧版 PHP 使用的 `rest/wd/photo/info` 接口。
+//! 取不到时回退到 `rest/wd/photo/info` 接口。
 //!
-//! 旧版 PHP 写死了一个 `did` Cookie，这里改为优先使用设置里的 Cookie，没有时随机生成。
+//! 优先使用设置里的 Cookie，没有时随机生成 `did` Cookie。
 
 use std::sync::LazyLock;
 
@@ -228,11 +228,11 @@ mod tests {
     }
 
     #[test]
-    fn parses_rest_api_atlas_like_legacy_php() {
+    fn parses_rest_api_atlas() {
         let data: Value = serde_json::from_str(REST_ATLAS).unwrap();
         let info = parse_photo(&data["photo"], data.get("atlas"), "3xrest", "x").unwrap();
         assert_eq!(info.kind, MediaKind::Images);
-        // 与旧版 PHP 相同的默认 CDN
+        // 默认 CDN
         assert!(info.assets[0].url.starts_with("https://p2.a.yximgs.com/"), "{}", info.assets[0].url);
         assert_eq!(info.assets.iter().filter(|a| a.id.starts_with("image-")).count(), 3);
     }

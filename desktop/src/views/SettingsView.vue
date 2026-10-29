@@ -402,8 +402,8 @@ function insertVar(v: string) {
             </div>
             <div class="field">
               <label>远程 API 地址</label>
-              <el-input v-model="form.remoteEndpoint" size="small" placeholder="https://your-host/jxindex.php" class="mono" />
-              <small class="mute">填写已部署的旧版 PHP 接口（本仓库的 jxindex.php），只用于抖音、快手；其他平台始终本地解析。留空则不使用。</small>
+              <el-input v-model="form.remoteEndpoint" size="small" placeholder="https://your-host/api" class="mono" />
+              <small class="mute">填写你自己部署的解析接口地址，只用于抖音、快手；其他平台始终本地解析。留空则不使用。</small>
             </div>
           </section>
           <section class="group card">
