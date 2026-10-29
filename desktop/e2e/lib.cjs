@@ -67,7 +67,7 @@ function probe(file) {
     hasAudio: !!a,
     hdr: (globalThis.__hdrFiles || []).includes(file),
     thumb,
-    url: urlOf(file),
+    url: (globalThis.__badFiles || []).includes(file) ? `http://127.0.0.1:${MPORT}/bad?p=none` : urlOf(file),
   }
 }
 
@@ -97,6 +97,7 @@ function initScript(mport) {
         case 'edit_probe': return await window.__probe(args.path)
         case 'edit_thumb': return null
         case 'edit_subtitle_cues': return window.__cues || []
+        case 'edit_proxy': window.__proxied = (window.__proxied || 0) + 1; return window.__proxyUrl
         case 'edit_missing': return args.paths.filter((p) => !window.__exists(p))
         case 'edit_save': window.__files[args.path] = JSON.parse(JSON.stringify(args.project)); return null
         case 'edit_open': {

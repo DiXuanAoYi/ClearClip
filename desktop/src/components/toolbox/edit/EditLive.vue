@@ -3,7 +3,9 @@
 // 每个素材一个 <video> / <img>，只保留正在用和马上要用的；位置、旋转、缩放、转场用 CSS 摆出来，是对导出效果的近似，
 // 导出时仍然由 ffmpeg 渲染。播放位置由监视器给（`sync`），这里只负责让每个元素跟上。
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { ElMessage } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
+import { errorText } from '../../../api'
 import type { EditApi } from '../../../composables/useEditProject'
 import type { EditClip, EditOverlay } from '../../../types'
 import { audioSpan, clamp, isGif, liveFrame, mainGain, overlayBox, overlayEnd, overlayGain, transitionLook } from '../../../utils/edit'
@@ -58,7 +60,7 @@ const items = computed<Item[]>(() => {
     const s = ed.sources[path]
     if (!s) return
     const gif = isGif(path)
-    all.push({ it: { key: (main ? 'm' : 'o') + id, main, id, path, url: s.url, still: kind === 'image' || gif, gif, inMs, clip, overlay }, from, to })
+    all.push({ it: { key: (main ? 'm' : 'o') + id, main, id, path, url: (kind === 'video' && ed.proxies[path]) || s.url, still: kind === 'image' || gif, gif, inMs, clip, overlay }, from, to })
   }
   p.clips.forEach((c, i) => pl[i] && add(true, c.id, c.path, c.kind, c.inMs, pl[i].startMs, pl[i].endMs, c))
   for (const o of p.overlays) add(false, o.id, o.path, o.kind, o.inMs, o.startMs, overlayEnd(o), undefined, o)
@@ -108,6 +110,17 @@ function stillSrc(it: Item): string | undefined {
   return it.url
 }
 const problem = computed(() => items.value.some((it) => isLive(it) && isFailed(it)))
+const stuck = computed(() => [...new Set(items.value.filter((it) => !it.still && isFailed(it) && !ed.proxies[it.path]).map((it) => it.path))])
+const proxyBusy = computed(() => stuck.value.some((p) => ed.proxying[p]))
+async function makeProxies() {
+  for (const p of stuck.value) {
+    try {
+      await ed.makeProxy(p)
+    } catch (e) {
+      ElMessage.error(errorText(e))
+    }
+  }
+}
 
 // ---------- 摆放 ----------
 
@@ -292,7 +305,10 @@ defineExpose({ sync, pause })
     </div>
     <div class="fxslot"><slot name="fx" /></div>
     <audio v-for="a in ed.project.value.audio" :key="a.id" :ref="(el) => setAudio(a.id, el)" :src="ed.sources[a.path]?.url" preload="auto" />
-    <div v-if="problem" class="warn">有素材在实时画面里播不出来（系统不支持它的编码），先用静态画面代替；导出不受影响，想看真实效果请用“精确预览”。</div>
+    <div v-if="problem" class="warn">
+      有素材在实时画面里播不出来（系统不支持它的编码），先用静态画面代替；导出不受影响。
+      <button v-if="stuck.length" class="lnk" :disabled="proxyBusy" @click="makeProxies">{{ proxyBusy ? '正在生成…' : '生成预览用的小文件' }}</button>
+    </div>
   </div>
 </template>
 
@@ -340,5 +356,20 @@ audio {
   padding: 0 12px;
   color: #ffd27a;
   text-shadow: 0 1px 2px #000;
+}
+.warn .lnk {
+  pointer-events: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-left: 6px;
+  font: inherit;
+  color: #fff;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.warn .lnk:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 </style>

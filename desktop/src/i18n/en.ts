@@ -2247,4 +2247,7 @@ export const en: Record<string, string> = {
   "已导入 {0} 条字幕，可以在时间线的文字轨上调整。": "Imported {0} subtitles. You can adjust them on the text track.",
   "已导入 {0} 条字幕，还有 {1} 条放不下（文字最多 {2} 条）。": "Imported {0} subtitles; {1} did not fit (at most {2} texts).",
   "这个字幕文件里没有读到字幕。": "No subtitles were found in this file.",
+  "有素材在实时画面里播不出来（系统不支持它的编码），先用静态画面代替；导出不受影响。": "Some media cannot play in the live view (the system does not support its codec), so a still frame is shown instead. Export is not affected.",
+  "正在生成…": "Generating…",
+  "生成预览用的小文件": "Generate a lightweight preview file",
 }

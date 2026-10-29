@@ -75,6 +75,20 @@ export interface AddReport {
 export function useEditProject() {
   const project = ref<EditProject>(emptyProject())
   const sources = reactive<Record<string, EditSource>>({})
+  /** 系统播放器解不了的素材：转好的预览小文件的播放地址（只在监视器里用，导出用原素材） */
+  const proxies = reactive<Record<string, string>>({})
+  const proxying = reactive<Record<string, boolean>>({})
+  async function makeProxy(path: string): Promise<string | null> {
+    if (proxies[path]) return proxies[path]
+    if (proxying[path]) return null
+    proxying[path] = true
+    try {
+      proxies[path] = await api.editProxy(path)
+      return proxies[path]
+    } finally {
+      delete proxying[path]
+    }
+  }
   /** 工程里用到、但现在找不到或读不出来的文件 */
   const broken = reactive<Record<string, string>>({})
   const sel = ref<Sel | null>(null)
@@ -704,6 +718,9 @@ export function useEditProject() {
     addMusic,
     addText,
     importSubtitles,
+    proxies,
+    proxying,
+    makeProxy,
     splitAtPlayhead,
     removeSelected,
     rippleDeleteSelected,

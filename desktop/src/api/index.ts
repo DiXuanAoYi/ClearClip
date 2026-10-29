@@ -232,6 +232,7 @@ export const api = {
   editOpen: (path: string) => invoke<OpenedEdit>('edit_open', { path }),
   editMissing: (paths: string[]) => invoke<string[]>('edit_missing', { paths }),
   editSubtitleCues: (path: string) => invoke<{ startMs: number; endMs: number; text: string }[]>('edit_subtitle_cues', { path }),
+  editProxy: (path: string) => invoke<string>('edit_proxy', { path }),
   editFonts: () => invoke<{ default: string | null }>('edit_fonts'),
   trackDetect: (path: string, atMs: number) => invoke<TrackDetect>('track_detect', { path, atMs }),
   trackFollow: (req: { id: number; path: string; fromMs: number; toMs: number; refMs: number; rect: NRect }) => invoke<TrackResult>('track_follow', { req }),
