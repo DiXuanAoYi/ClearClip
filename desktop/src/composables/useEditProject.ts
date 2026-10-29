@@ -27,6 +27,7 @@ import {
   mediaPaths,
   moveItem,
   nextId,
+  textFromCue,
   normalizeProject,
   outputSize,
   overlayDuration,
@@ -333,6 +334,20 @@ export function useEditProject() {
       sel.value = { kind: 'text', id: t.id }
     })
     return true
+  }
+
+  /** 导入字幕文件：每条字幕变成一条文字。最多放得下 MAX_TEXTS 条，超出的丢掉。返回 { added, skipped }。 */
+  async function importSubtitles(path: string, offsetMs = 0): Promise<{ added: number; skipped: number }> {
+    const cues = await api.editSubtitleCues(path)
+    const room = Math.max(0, MAX_TEXTS - project.value.texts.length)
+    const take = cues.slice(0, room)
+    if (take.length) {
+      mutate((p) => {
+        for (const c of take) p.texts.push(textFromCue(nextId(p), c, offsetMs))
+        sel.value = null
+      })
+    }
+    return { added: take.length, skipped: cues.length - take.length }
   }
 
   // ---------- 编辑操作 ----------
@@ -688,6 +703,7 @@ export function useEditProject() {
     addOverlays,
     addMusic,
     addText,
+    importSubtitles,
     splitAtPlayhead,
     removeSelected,
     rippleDeleteSelected,

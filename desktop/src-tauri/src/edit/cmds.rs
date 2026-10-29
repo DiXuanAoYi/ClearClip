@@ -225,6 +225,39 @@ pub fn edit_open(path: String) -> AppResult<OpenedProject> {
     Ok(OpenedProject { project, missing })
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleCue {
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub text: String,
+}
+
+/// 字幕文件最大 5 MB
+const MAX_SUBTITLE_BYTES: u64 = 5 * 1024 * 1024;
+
+/// 读取 SRT / VTT / ASS / SSA 字幕文件，按时间返回每一条字幕。
+#[tauri::command]
+pub fn edit_subtitle_cues(path: String) -> AppResult<Vec<SubtitleCue>> {
+    use crate::subtitle;
+    let p = Path::new(&path);
+    let ext = ext_of(p);
+    if !matches!(ext.as_str(), "srt" | "vtt" | "ass" | "ssa") {
+        return Err(AppError::unsupported("只支持 SRT、VTT、ASS、SSA 字幕文件。"));
+    }
+    let meta = std::fs::metadata(p).map_err(|_| AppError::not_found("找不到字幕文件。"))?;
+    if meta.len() > MAX_SUBTITLE_BYTES {
+        return Err(AppError::invalid("这个字幕文件太大了。"));
+    }
+    let text = String::from_utf8(std::fs::read(p)?).map_err(|_| AppError::invalid("字幕文件不是 UTF-8 编码，请先用文本编辑器另存为 UTF-8。"))?;
+    let cues = match ext.as_str() {
+        "srt" => subtitle::parse_srt(&text),
+        "vtt" => subtitle::parse_vtt(&text),
+        _ => subtitle::parse_ass(&text),
+    };
+    Ok(cues.into_iter().map(|c| SubtitleCue { start_ms: c.start, end_ms: c.end, text: c.lines.join("\n") }).collect())
+}
+
 /// 检查这些文件还在不在，返回找不到的。
 #[tauri::command]
 pub fn edit_missing(paths: Vec<String>) -> Vec<String> {

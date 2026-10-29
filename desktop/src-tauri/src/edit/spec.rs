@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::track::TrackPt;
 
 pub const MAX_CLIPS: usize = 300;
-pub const MAX_TEXTS: usize = 100;
+pub const MAX_TEXTS: usize = 500;
 pub const MAX_AUDIO: usize = 20;
 /// 叠加轨上最多的素材数、最多的轨道数
 pub const MAX_OVERLAYS: usize = 100;

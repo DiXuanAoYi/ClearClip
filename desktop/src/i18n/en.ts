@@ -2242,4 +2242,9 @@ export const en: Record<string, string> = {
   "转换失败。": "Conversion failed.",
   "这个叠加素材是 HDR，导出的颜色会偏灰。": "This overlay is HDR; the exported colors will look washed out.",
   "这个素材是 HDR，剪辑不会自动转成普通画面，导出的颜色会偏灰。": "This clip is HDR. The editor does not convert it automatically, so the exported colors will look washed out.",
+  "先把视频放到主轨上，再导入字幕。": "Put a video on the main track first, then import subtitles.",
+  "导入字幕文件（SRT / ASS）…": "Import subtitle file (SRT / ASS)…",
+  "已导入 {0} 条字幕，可以在时间线的文字轨上调整。": "Imported {0} subtitles. You can adjust them on the text track.",
+  "已导入 {0} 条字幕，还有 {1} 条放不下（文字最多 {2} 条）。": "Imported {0} subtitles; {1} did not fit (at most {2} texts).",
+  "这个字幕文件里没有读到字幕。": "No subtitles were found in this file.",
 }

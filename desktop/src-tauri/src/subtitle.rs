@@ -119,6 +119,32 @@ pub fn parse_srt(text: &str) -> Vec<Cue> {
     parse_blocks(&format!("WEBVTT\n\n{}", text.trim_start_matches('\u{feff}')), false)
 }
 
+/// ASS / SSA 的对白行 → 字幕。只取文字和时间：去掉 `{\\an8}` 之类的样式标记，`\\N` 当换行，忽略绘图和注释行。
+pub fn parse_ass(text: &str) -> Vec<Cue> {
+    static OVERRIDE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{[^}]*\}").unwrap());
+    let mut fmt: Vec<String> = vec![];
+    let mut cues = vec![];
+    for line in text.trim_start_matches('\u{feff}').lines() {
+        let line = line.trim();
+        if let Some(f) = line.strip_prefix("Format:") {
+            fmt = f.split(',').map(|x| x.trim().to_ascii_lowercase()).collect();
+        } else if let Some(d) = line.strip_prefix("Dialogue:") {
+            let n = if fmt.is_empty() { 10 } else { fmt.len() };
+            let parts: Vec<&str> = d.trim_start().splitn(n, ',').collect();
+            let at = |name: &str, default: usize| fmt.iter().position(|x| x == name).unwrap_or(default);
+            let (Some(s), Some(e), Some(t)) = (parts.get(at("start", 1)), parts.get(at("end", 2)), parts.get(at("text", 9))) else { continue };
+            let (Some(start), Some(end)) = (parse_time(s), parse_time(e)) else { continue };
+            let t = OVERRIDE_RE.replace_all(t, "").replace("\\N", "\n").replace("\\n", "\n").replace("\\h", " ");
+            let lines: Vec<String> = t.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+            if !lines.is_empty() && end > start {
+                cues.push(Cue { start, end, lines });
+            }
+        }
+    }
+    cues.sort_by_key(|c| c.start);
+    cues
+}
+
 pub fn vtt_to_srt(text: &str) -> String {
     let mut cues = parse_vtt(text);
     if ROLLING_RE.is_match(text) {
@@ -457,6 +483,15 @@ pub fn target_ext(ext: &str, convert_subs: bool, danmaku_ass: bool) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ass_dialogue_is_parsed() {
+        let ass = "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.50,0:00:03.00,Default,,0,0,0,,{\\an8}你好,世界\\N第二行\nComment: 0,0:00:05.00,0:00:06.00,Default,,0,0,0,,x\n";
+        let c = super::parse_ass(ass);
+        assert_eq!(c.len(), 1);
+        assert_eq!((c[0].start, c[0].end), (1500, 3000));
+        assert_eq!(c[0].lines, vec!["你好,世界".to_string(), "第二行".to_string()]);
+    }
+
     use super::*;
 
     const ROLLING: &str = "WEBVTT\nKind: captions\nLanguage: en\n\n\

@@ -96,6 +96,7 @@ function initScript(mport) {
         case 'plugin:dialog|save': { const r = window.__dialogSave.shift(); return r === undefined ? null : r }
         case 'edit_probe': return await window.__probe(args.path)
         case 'edit_thumb': return null
+        case 'edit_subtitle_cues': return window.__cues || []
         case 'edit_missing': return args.paths.filter((p) => !window.__exists(p))
         case 'edit_save': window.__files[args.path] = JSON.parse(JSON.stringify(args.project)); return null
         case 'edit_open': {

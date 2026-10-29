@@ -7,7 +7,7 @@ import type { EditAudio, EditClip, EditOutput, EditOverlay, EditProject, EditReg
 export const MIN_MS = 100
 export const MIN_TRANSITION_MS = 100
 export const MAX_CLIPS = 300
-export const MAX_TEXTS = 100
+export const MAX_TEXTS = 500
 export const MAX_AUDIO = 20
 /** 叠加素材最多几个、几条轨道、最晚从哪里开始（和后端 `MAX_OVERLAYS` / `MAX_OVERLAY_TRACKS` / `MAX_START_MS` 一致） */
 export const MAX_OVERLAYS = 100
@@ -187,6 +187,18 @@ export function textAt(id: number, startMs: number): EditText {
   t.text = '输入文字'
   t.startMs = startMs
   t.endMs = startMs + DEFAULT_TEXT_MS
+  return t
+}
+
+/** 字幕文件里的一条 → 画面底部的一条文字（字号比普通文字小一点，带描边）。 */
+export function textFromCue(id: number, cue: { startMs: number; endMs: number; text: string }, offsetMs: number): EditText {
+  const t = blankText()
+  t.id = id
+  t.text = cue.text
+  t.startMs = cue.startMs + offsetMs
+  t.endMs = cue.endMs + offsetMs
+  t.size = 5
+  t.y = 0.9
   return t
 }
 
